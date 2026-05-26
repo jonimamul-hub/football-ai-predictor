@@ -364,10 +364,22 @@ async function getSignals(type) {
 //  STATIC CLIENT BUILD  (must be LAST, after all /api routes)
 // ═══════════════════════════════════════════════════════════════════════════
 const CLIENT_DIST = path.join(__dirname, '../client/dist');
+const INDEX_HTML  = path.join(CLIENT_DIST, 'index.html');
+
 app.use(express.static(CLIENT_DIST));
-// SPA fallback — serve index.html for any non-API route so React Router works
-app.get('*', (req, res) => {
-  res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+
+// SPA fallback — app.use() works in both Express 4 and 5 (app.get('*') is invalid in Express 5)
+app.use((req, res) => {
+  const fs = require('fs');
+  if (fs.existsSync(INDEX_HTML)) {
+    res.sendFile(INDEX_HTML);
+  } else {
+    res.status(503).send(
+      '<h2>App is starting…</h2>' +
+      '<p>Client build not found. Railway build may still be in progress.</p>' +
+      '<p>Try refreshing in a few seconds.</p>'
+    );
+  }
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────
