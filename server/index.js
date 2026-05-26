@@ -60,11 +60,17 @@ async function initDB() {
   `);
 
   // Idempotent column additions for existing deployments
-  await pool.query(`
-    ALTER TABLE leagues  ADD COLUMN IF NOT EXISTS signal_count INTEGER DEFAULT 0;
-    ALTER TABLE signals  ADD COLUMN IF NOT EXISTS note    TEXT    DEFAULT '';
-    ALTER TABLE signals  ADD COLUMN IF NOT EXISTS leagues TEXT[]  DEFAULT '{}';
-  `);
+  // Run each statement separately so one failure doesn't block the others
+  const migrations = [
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS emoji        VARCHAR(10) DEFAULT '🌍'`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS lbr_status   VARCHAR(20) DEFAULT 'pending'`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS signal_count INTEGER     DEFAULT 0`,
+    `ALTER TABLE signals ADD COLUMN IF NOT EXISTS note         TEXT        DEFAULT ''`,
+    `ALTER TABLE signals ADD COLUMN IF NOT EXISTS leagues      TEXT[]      DEFAULT '{}'`,
+  ];
+  for (const sql of migrations) {
+    await pool.query(sql);
+  }
 
   console.log('✅ DB ready');
 }
@@ -99,7 +105,8 @@ app.post('/api/leagues', async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO leagues (country, name, emoji, lbr_status)
        VALUES ($1, $2, $3, 'pending')
-       ON CONFLICT (country, name) DO UPDATE SET lbr_status = 'pending'
+       ON CONFLICT (country, name) DO UPDATE
+         SET lbr_status = 'pending', emoji = EXCLUDED.emoji
        RETURNING *`,
       [country, name, emoji || '🌍']
     );
@@ -109,6 +116,7 @@ app.post('/api/leagues', async (req, res) => {
     // ── LBR fires AFTER response is sent ────────────────────────────────
     setImmediate(() => runLBRForLeague(league));
   } catch (err) {
+    console.error('POST /api/leagues error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
