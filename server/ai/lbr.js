@@ -1,83 +1,84 @@
 // AI — LBR (League-Based Research)
-// Uses web_search_20250305 to freely research a league online,
-// then generates WHY-based BTTS and Draw prediction signals.
+// Searches the web freely for real league data, then outputs BTTS + Draw signals as JSON.
+// Target: complete in < 2 minutes.  Uses claude-sonnet-4-5 (faster than opus for this task).
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-// Keep the system prompt focused and concrete — complex prompts cause Claude
-// to over-think and produce prose instead of JSON.
-const SYSTEM = `You are a football data analyst. Research a football league using web search, then output prediction signals as JSON.
+// ─── Focused system prompt ─────────────────────────────────────────────────
+// Kept deliberately short so Claude spends tokens on research, not prompt parsing.
+const SYSTEM = `You are a football analyst. Research a league using web search, then output prediction signals as JSON.
 
-After researching, identify WHY certain outcomes happen in this specific league:
+SEARCH STRATEGY — be efficient:
+• Do 3–5 targeted searches (BTTS rate, draw rate, goals per game, tactical style)
+• Do NOT search the same topic twice
+• After gathering data, output JSON immediately — do not narrate findings
 
-BTTS signals — WHY do both teams score (or not)?
-  Examples of good factors: high defensive line + press creates gaps, both keepers leaked heavily, high motivation context, open H2H history
-  Examples of good stats: BTTS rate ≥ 65% when top-6 meet, avg goals ≥ 2.8/game in top-half clashes
+SIGNAL TYPES:
+• Factors — qualitative WHY reasons (e.g. "High press + high defensive line → gaps for both teams")
+• Stats   — measurable thresholds (e.g. "BTTS ≥ 68% when both sides are top-6")
 
-Draw signals — WHY does neither team win?
-  Examples of good factors: tactical symmetry, away team content with a point, derby/local rivalry mental block, mid-table stasis
-  Examples of good stats: draw rate ≥ 30% when teams are within 3 places, draw rate doubles in final 10 matches when both safe
+SIGNAL QUALITY:
+• Ideal   — >70% hit rate, confirmed across multiple seasons
+• Good    — 55-70%, solid pattern
+• Weak    — 40-55%, emerging
+• Dormant — <40% or insufficient data
 
-Signal quality levels:
-  Ideal   — >70% confirmed, seen across both seasons
-  Good    — 55-70%, solid pattern
-  Weak    — 40-55%, emerging pattern
-  Dormant — <40% or not enough data
-
-CRITICAL: Output ONLY the JSON below — no prose, no markdown fences, no explanation.
+CRITICAL OUTPUT RULE — when you have enough data, output ONLY this JSON and nothing else:
 
 {
   "btts": {
-    "factors": [
-      {"name": "specific WHY factor", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence from real data"}
-    ],
-    "stats": [
-      {"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence"}
-    ]
+    "factors": [{"name": "specific WHY factor", "level": "Ideal|Good|Weak|Dormant", "note": "evidence from real data"}],
+    "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "evidence"}]
   },
   "draw": {
-    "factors": [
-      {"name": "specific WHY factor for draws", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence"}
-    ],
-    "stats": [
-      {"name": "specific measurable threshold for draws", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence"}
-    ]
+    "factors": [{"name": "specific WHY factor for draws", "level": "Ideal|Good|Weak|Dormant", "note": "evidence"}],
+    "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "evidence"}]
   }
-}`;
+}
+
+Provide 4–7 signals per category. Output raw JSON only — no markdown, no prose.`;
 
 
+// ─── Main entry point ──────────────────────────────────────────────────────
 async function runLBR(country, leagueName) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
   const client = new Anthropic({ apiKey });
 
-  // Let Claude decide what to search — no prescribed queries, no hardcoded sources
   const userMessage =
-    `Research the "${leagueName}" league in ${country} for the 2024/25 and 2023/24 seasons.\n\n` +
-    `Use web search to freely find information from any online source — statistics sites, football analytics, ` +
-    `match reports, tactical blogs, or anything relevant. Search as many times as needed.\n\n` +
-    `Focus on discovering:\n` +
-    `- Goals per game, BTTS rates, clean sheet rates\n` +
-    `- Draw frequencies and the contexts that produce them\n` +
-    `- Tactical styles of the top/bottom clubs\n` +
-    `- Any notable patterns that explain WHY outcomes happen\n\n` +
-    `When you have enough information, output the JSON signals. 5–8 signals per category.`;
+    `Research "${leagueName}" (${country}) — 2024/25 and 2023/24 seasons.\n\n` +
+    `Use web search to find real statistics and patterns. Search freely — no restricted sources.\n\n` +
+    `After 3–5 searches output the JSON signal object. Do not exceed 5 searches.`;
 
   const messages = [{ role: 'user', content: userMessage }];
   let lastText = '';
 
-  for (let i = 0; i < 25; i++) {
-    const resp = await client.beta.messages.create({
-      model:      'claude-opus-4-5',
-      max_tokens: 8000,
-      system:     SYSTEM,
-      tools:      [{ type: 'web_search_20250305', name: 'web_search' }],
-      messages,
-      betas:      ['web-search-2025-03-05'],
-    });
+  // Hard cap: 10 iterations.  Each web-search round-trip is ~20-40 s,
+  // so worst case is 10 × 40 s = ~6 min.  Typically finishes in 3–4 iterations.
+  for (let i = 0; i < 10; i++) {
+    // Per-call timeout: 90 seconds.  Prevents a single stuck API call from hanging forever.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90_000);
 
-    // Always accumulate the full assistant turn
+    let resp;
+    try {
+      resp = await client.beta.messages.create(
+        {
+          model:      'claude-sonnet-4-5',
+          max_tokens: 4096,
+          system:     SYSTEM,
+          tools:      [{ type: 'web_search_20250305', name: 'web_search' }],
+          messages,
+          betas:      ['web-search-2025-03-05'],
+        },
+        { signal: controller.signal }
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    // Accumulate assistant turn
     messages.push({ role: 'assistant', content: resp.content });
 
     if (resp.stop_reason === 'end_turn') {
@@ -90,11 +91,11 @@ async function runLBR(country, leagueName) {
       const result = parseLBR(text);
       if (result) return result;
 
-      // Got prose but no JSON — nudge once more
-      if (i < 22) {
+      // Got prose but no JSON — ask once more for JSON output
+      if (i < 8) {
         messages.push({
-          role: 'user',
-          content: 'Output ONLY the JSON now. No prose, no markdown fences. Start with { and end with }.'
+          role:    'user',
+          content: 'Output ONLY the JSON now. No prose, no markdown. Start with { and end with }.',
         });
       }
       continue;
@@ -102,34 +103,35 @@ async function runLBR(country, leagueName) {
 
     if (resp.stop_reason === 'tool_use') {
       // web_search_20250305: Anthropic runs the search server-side.
-      // We acknowledge every tool_use block; the results are injected automatically.
+      // We acknowledge every tool_use block with an empty result to keep the loop going.
       const acks = resp.content
         .filter(b => b.type === 'tool_use')
         .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
-      if (acks.length > 0) {
+      if (acks.length) {
         messages.push({ role: 'user', content: acks });
       }
       continue;
     }
 
-    // Unexpected stop reason — bail
+    // Unexpected stop reason
     break;
   }
 
-  // Last-ditch: try to parse whatever Claude last produced
+  // Last-ditch: try to parse whatever text Claude last produced
   return parseLBR(lastText);
 }
 
 
-// Robust JSON extraction — depth-tracks to find all top-level objects,
-// tries them largest-first, skips bad candidates gracefully.
+// ─── Robust JSON extraction ────────────────────────────────────────────────
+// Depth-tracks to find ALL balanced {...} blocks in the text, then tries them
+// largest-first.  Avoids the greedy-regex bug that matched from first { to last }
+// and broke whenever Claude wrote prose containing braces before the JSON block.
 function parseLBR(text) {
   if (!text) return null;
 
-  // First: strip markdown fences if present
+  // Strip markdown fences if present
   text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
 
-  // Depth-track to collect all balanced { ... } blocks
   const candidates = [];
   let depth = 0;
   let start = -1;
@@ -147,23 +149,20 @@ function parseLBR(text) {
     }
   }
 
-  // Try largest to smallest — the full signal object will be the biggest block
+  // Largest candidates first — the full signal object is the biggest block
   candidates.sort((a, b) => b.length - a.length);
 
   for (const raw of candidates) {
     try {
       const data = JSON.parse(raw);
-      if (data.btts && data.draw) return normaliseSignals(data);
-    } catch {
-      // malformed JSON — try next candidate
-    }
+      if (data.btts && data.draw) return normalise(data);
+    } catch { /* try next */ }
   }
-
   return null;
 }
 
 
-function normaliseSignals(data) {
+function normalise(data) {
   for (const outcome of ['btts', 'draw']) {
     if (!data[outcome] || typeof data[outcome] !== 'object') {
       data[outcome] = { factors: [], stats: [] };
