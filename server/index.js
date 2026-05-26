@@ -382,33 +382,8 @@ app.use((req, res) => {
   }
 });
 
-// ─── Debug route (temporary) ──────────────────────────────────────────────
-app.get('/debug-fs', (_, res) => {
-  const fs = require('fs');
-  const checks = [
-    __dirname,
-    path.join(__dirname, '..'),
-    CLIENT_DIST,
-    INDEX_HTML,
-  ];
-  const info = checks.map(p => {
-    try {
-      const exists = fs.existsSync(p);
-      const items  = exists && fs.statSync(p).isDirectory()
-        ? fs.readdirSync(p).slice(0, 20)
-        : [];
-      return { path: p, exists, items };
-    } catch(e) { return { path: p, error: e.message }; }
-  });
-  res.json({ info });
-});
-
 // ─── Boot ─────────────────────────────────────────────────────────────────
 initDB().then(() => {
-  const fs = require('fs');
-  console.log(`📁 __dirname: ${__dirname}`);
-  console.log(`📁 CLIENT_DIST exists: ${fs.existsSync(CLIENT_DIST)}`);
-  console.log(`📁 INDEX_HTML exists: ${fs.existsSync(INDEX_HTML)}`);
   app.listen(PORT, () => console.log(`✅ Server on port ${PORT}`));
 }).catch(err => {
   console.error('DB init failed:', err.message);
