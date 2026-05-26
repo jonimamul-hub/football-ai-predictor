@@ -108,10 +108,22 @@ export default function DataConfig({ type }) {
           )}
           {factors.map(f => (
             <div key={f.id} className="sig-row">
-              <span className={`sig ${LEVEL_CLASS[f.level] || 'dormant'}`}>{f.level}</span>
-              <span className="sig-name">{f.name}</span>
-              <span className="sig-src">{f.src === 'LBR' ? '📚' : '👤'} {f.src}</span>
-              <button className="del-btn" onClick={() => deleteFactor(f.id)}>×</button>
+              <div className="sig-head">
+                <span className={`sig ${LEVEL_CLASS[f.level] || 'dormant'}`}>{f.level}</span>
+                <span className="sig-name">{f.name}</span>
+                <span className="sig-src">{f.src === 'LBR' ? '📚' : '👤'} {f.src}</span>
+                <button className="del-btn" onClick={() => deleteFactor(f.id)}>×</button>
+              </div>
+              {(f.note || (f.leagues && f.leagues.length > 0)) && (
+                <div className="sig-body">
+                  {f.note && <div className="sig-note">{f.note}</div>}
+                  {f.leagues && f.leagues.length > 0 && (
+                    <div className="sig-leagues">
+                      {f.leagues.map((lg, i) => <span key={i} className="sig-league-chip">{lg}</span>)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
           <div className="add-sig-row">
@@ -135,10 +147,22 @@ export default function DataConfig({ type }) {
           )}
           {stats.map(s => (
             <div key={s.id} className="sig-row">
-              <span className={`sig ${LEVEL_CLASS[s.level] || 'dormant'}`}>{s.level}</span>
-              <span className="sig-name">{s.name}</span>
-              <span className="sig-src">{s.src === 'LBR' ? '📚' : '👤'} {s.src}</span>
-              <button className="del-btn" onClick={() => deleteStat(s.id)}>×</button>
+              <div className="sig-head">
+                <span className={`sig ${LEVEL_CLASS[s.level] || 'dormant'}`}>{s.level}</span>
+                <span className="sig-name">{s.name}</span>
+                <span className="sig-src">{s.src === 'LBR' ? '📚' : '👤'} {s.src}</span>
+                <button className="del-btn" onClick={() => deleteStat(s.id)}>×</button>
+              </div>
+              {(s.note || (s.leagues && s.leagues.length > 0)) && (
+                <div className="sig-body">
+                  {s.note && <div className="sig-note">{s.note}</div>}
+                  {s.leagues && s.leagues.length > 0 && (
+                    <div className="sig-leagues">
+                      {s.leagues.map((lg, i) => <span key={i} className="sig-league-chip">{lg}</span>)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
           <div className="add-sig-row">

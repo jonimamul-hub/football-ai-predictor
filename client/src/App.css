@@ -496,8 +496,7 @@
 ───────────────────────────────────────────── */
 .sig-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
   padding: 9px 12px;
   border-bottom: 1px solid #1c1f2e;
   font-size: 12px;
@@ -507,8 +506,37 @@
 .sig-row:last-child { border-bottom: none; }
 .sig-row:hover { background: #10131a; }
 
+.sig-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sig-name { flex: 1; color: #9ca3b4; }
 .sig-src   { font-size: 10px; color: #4a4d5a; white-space: nowrap; }
+
+.sig-body {
+  padding: 4px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sig-leagues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sig-league-chip {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: #1a1d2a;
+  color: #4a4d5a;
+  border: 1px solid #2a2d3a;
+  white-space: nowrap;
+}
 
 .del-btn {
   width: 20px;
@@ -688,6 +716,7 @@
 .lbr-pending { background: #1a1d2a; color: #6b6f85; }
 .lbr-running { background: #142040; color: #60a5fa; animation: pulse 1.4s ease-in-out infinite; }
 .lbr-failed  { background: #2a0f0f; color: #f87171; }
+.lbr-done    { background: #0f2e18; color: #4ade80; border: 1px solid #14532d; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -719,6 +748,7 @@
   font-size: 11px;
   color: #6b6f85;
   font-style: italic;
+  line-height: 1.5;
 }
 
 /* badge-skip */

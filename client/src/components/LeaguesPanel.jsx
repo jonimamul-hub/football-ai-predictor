@@ -13,12 +13,12 @@ function getEmoji(country) {
 }
 
 // Status pill for LBR
-function LbrStatus({ status }) {
-  if (!status || status === 'done') return null
+function LbrStatus({ status, signalCount }) {
   const map = {
     pending: { cls: 'lbr-pending', label: '⏳ LBR pending' },
     running: { cls: 'lbr-running', label: '🔄 LBR running…' },
     failed:  { cls: 'lbr-failed',  label: '❌ LBR failed'  },
+    done:    { cls: 'lbr-done',    label: `✅ ${signalCount || 0} signals` },
   }
   const s = map[status]
   if (!s) return null
@@ -164,8 +164,7 @@ export default function LeaguesPanel() {
               {c.leagues.map(l => (
                 <div key={l.id} className="league-row">
                   <span>{l.name}</span>
-                  <LbrStatus status={l.lbr_status} />
-                  {l.lbr_status === 'done' && <span className="st-ready">Ready</span>}
+                  <LbrStatus status={l.lbr_status} signalCount={l.signal_count} />
                   <button
                     className="del-btn"
                     onClick={() => removeLeague(l.id, c.name, l.name)}

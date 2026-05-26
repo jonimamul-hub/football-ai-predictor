@@ -21,12 +21,13 @@ const pool = new Pool({
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS leagues (
-      id         SERIAL PRIMARY KEY,
-      country    VARCHAR(100) NOT NULL,
-      name       VARCHAR(100) NOT NULL,
-      emoji      VARCHAR(10)  DEFAULT '🌍',
-      lbr_status VARCHAR(20)  DEFAULT 'pending',
-      created_at TIMESTAMP    DEFAULT NOW(),
+      id           SERIAL PRIMARY KEY,
+      country      VARCHAR(100) NOT NULL,
+      name         VARCHAR(100) NOT NULL,
+      emoji        VARCHAR(10)  DEFAULT '🌍',
+      lbr_status   VARCHAR(20)  DEFAULT 'pending',
+      signal_count INTEGER      DEFAULT 0,
+      created_at   TIMESTAMP    DEFAULT NOW(),
       UNIQUE(country, name)
     );
 
@@ -36,6 +37,8 @@ async function initDB() {
       category   VARCHAR(20)  NOT NULL,   -- factor | stat
       name       TEXT         NOT NULL,
       level      VARCHAR(20)  NOT NULL DEFAULT 'Dormant',
+      note       TEXT                  DEFAULT '',
+      leagues    TEXT[]                DEFAULT '{}',
       src        VARCHAR(20)           DEFAULT 'LBR',
       created_at TIMESTAMP             DEFAULT NOW(),
       UNIQUE(type, category, name)
@@ -55,6 +58,14 @@ async function initDB() {
       created_at  TIMESTAMP    DEFAULT NOW()
     );
   `);
+
+  // Idempotent column additions for existing deployments
+  await pool.query(`
+    ALTER TABLE leagues  ADD COLUMN IF NOT EXISTS signal_count INTEGER DEFAULT 0;
+    ALTER TABLE signals  ADD COLUMN IF NOT EXISTS note    TEXT    DEFAULT '';
+    ALTER TABLE signals  ADD COLUMN IF NOT EXISTS leagues TEXT[]  DEFAULT '{}';
+  `);
+
   console.log('✅ DB ready');
 }
 
@@ -115,6 +126,8 @@ app.delete('/api/leagues/:id', async (req, res) => {
 // ─── Background LBR runner ────────────────────────────────────────────────
 async function runLBRForLeague(league) {
   console.log(`▶ LBR starting for ${league.name} (${league.country})`);
+  // Readable label stored in signals.leagues[]
+  const leagueLabel = `${league.country} — ${league.name}`;
   try {
     await pool.query("UPDATE leagues SET lbr_status='running' WHERE id=$1", [league.id]);
 
@@ -123,47 +136,44 @@ async function runLBRForLeague(league) {
 
     let count = 0;
 
-    // Upsert BTTS signals
-    for (const f of (data.btts?.factors || [])) {
+    // Helper: upsert one signal, keeping the best quality level seen across leagues
+    async function upsertSignal(type, category, signal) {
+      const { name, level, note } = signal;
       await pool.query(
-        `INSERT INTO signals (type, category, name, level, src)
-         VALUES ('btts', 'factor', $1, $2, 'LBR')
-         ON CONFLICT (type, category, name) DO UPDATE SET level = $2`,
-        [f.name, f.level]
-      );
-      count++;
-    }
-    for (const s of (data.btts?.stats || [])) {
-      await pool.query(
-        `INSERT INTO signals (type, category, name, level, src)
-         VALUES ('btts', 'stat', $1, $2, 'LBR')
-         ON CONFLICT (type, category, name) DO UPDATE SET level = $2`,
-        [s.name, s.level]
-      );
-      count++;
-    }
-
-    // Upsert Draw signals
-    for (const f of (data.draw?.factors || [])) {
-      await pool.query(
-        `INSERT INTO signals (type, category, name, level, src)
-         VALUES ('draw', 'factor', $1, $2, 'LBR')
-         ON CONFLICT (type, category, name) DO UPDATE SET level = $2`,
-        [f.name, f.level]
-      );
-      count++;
-    }
-    for (const s of (data.draw?.stats || [])) {
-      await pool.query(
-        `INSERT INTO signals (type, category, name, level, src)
-         VALUES ('draw', 'stat', $1, $2, 'LBR')
-         ON CONFLICT (type, category, name) DO UPDATE SET level = $2`,
-        [s.name, s.level]
+        `INSERT INTO signals (type, category, name, level, note, src, leagues)
+         VALUES ($1, $2, $3, $4, $5, 'LBR', ARRAY[$6]::TEXT[])
+         ON CONFLICT (type, category, name) DO UPDATE
+           SET level = CASE
+                 WHEN ARRAY_POSITION(ARRAY['Ideal','Good','Weak','Dormant'], signals.level) <=
+                      ARRAY_POSITION(ARRAY['Ideal','Good','Weak','Dormant'], EXCLUDED.level)
+                 THEN signals.level
+                 ELSE EXCLUDED.level
+               END,
+               note    = EXCLUDED.note,
+               leagues = CASE
+                 WHEN $6 = ANY(signals.leagues) THEN signals.leagues
+                 ELSE array_append(signals.leagues, $6)
+               END`,
+        [type, category, name, level, note || '', leagueLabel]
       );
       count++;
     }
 
-    await pool.query("UPDATE leagues SET lbr_status='done' WHERE id=$1", [league.id]);
+    for (const f of (data.btts?.factors || [])) await upsertSignal('btts', 'factor', f);
+    for (const s of (data.btts?.stats   || [])) await upsertSignal('btts', 'stat',   s);
+    for (const f of (data.draw?.factors || [])) await upsertSignal('draw', 'factor', f);
+    for (const s of (data.draw?.stats   || [])) await upsertSignal('draw', 'stat',   s);
+
+    // Count how many signals now reference this league
+    const { rows: sc } = await pool.query(
+      `SELECT COUNT(*) AS c FROM signals WHERE $1 = ANY(leagues)`,
+      [leagueLabel]
+    );
+
+    await pool.query(
+      "UPDATE leagues SET lbr_status='done', signal_count=$1 WHERE id=$2",
+      [parseInt(sc[0].c, 10), league.id]
+    );
     console.log(`✅ LBR done for ${league.name} — ${count} signals upserted`);
   } catch (err) {
     console.error(`❌ LBR failed for ${league.name}:`, err.message);
@@ -181,7 +191,10 @@ app.get('/api/signals', async (req, res) => {
   if (!type) return res.status(400).json({ error: 'type query param required' });
   try {
     const { rows } = await pool.query(
-      "SELECT * FROM signals WHERE type = $1 ORDER BY category, level DESC, name",
+      `SELECT * FROM signals WHERE type = $1
+       ORDER BY category,
+         CASE level WHEN 'Ideal' THEN 1 WHEN 'Good' THEN 2 WHEN 'Weak' THEN 3 ELSE 4 END,
+         name`,
       [type]
     );
     const factors = rows.filter(r => r.category === 'factor');
@@ -351,7 +364,8 @@ app.patch('/api/history/:id', async (req, res) => {
 // ─── Helper: load signals from DB ─────────────────────────────────────────
 async function getSignals(type) {
   const { rows } = await pool.query(
-    "SELECT * FROM signals WHERE type=$1 ORDER BY level DESC, name",
+    `SELECT * FROM signals WHERE type=$1
+     ORDER BY CASE level WHEN 'Ideal' THEN 1 WHEN 'Good' THEN 2 WHEN 'Weak' THEN 3 ELSE 4 END, name`,
     [type]
   );
   return {
