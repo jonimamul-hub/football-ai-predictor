@@ -1,35 +1,135 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { api } from '../api'
+
+const COUNTRY_EMOJI = {
+  england: '🏴', spain: '🇪🇸', germany: '🇩🇪', france: '🇫🇷',
+  italy: '🇮🇹', georgia: '🇬🇪', portugal: '🇵🇹', netherlands: '🇳🇱',
+  turkey: '🇹🇷', russia: '🇷🇺', brazil: '🇧🇷', argentina: '🇦🇷',
+  usa: '🇺🇸', scotland: '🏴', belgium: '🇧🇪', greece: '🇬🇷',
+}
+
+function getEmoji(country) {
+  return COUNTRY_EMOJI[country.toLowerCase()] || '🌍'
+}
+
+// Status pill for LBR
+function LbrStatus({ status }) {
+  if (!status || status === 'done') return null
+  const map = {
+    pending: { cls: 'lbr-pending', label: '⏳ LBR pending' },
+    running: { cls: 'lbr-running', label: '🔄 LBR running…' },
+    failed:  { cls: 'lbr-failed',  label: '❌ LBR failed'  },
+  }
+  const s = map[status]
+  if (!s) return null
+  return <span className={`lbr-pill ${s.cls}`}>{s.label}</span>
+}
 
 export default function LeaguesPanel() {
-  const [countries, setCountries] = useState([
-    { id: 'england', name: 'England', emoji: '🏴', leagues: ['Premier League', 'Championship'], open: true },
-    { id: 'spain', name: 'Spain', emoji: '🇪🇸', leagues: ['La Liga'], open: false },
-  ])
+  const [countries, setCountries] = useState([])
   const [newCountry, setNewCountry] = useState('')
   const [newLeagues, setNewLeagues] = useState({})
+  const [loading, setLoading] = useState(true)
+
+  // Load leagues from DB
+  useEffect(() => {
+    loadLeagues()
+    // Poll for LBR status every 5 s while any league is still running/pending
+    const iv = setInterval(() => {
+      setCountries(c => {
+        const needsPoll = c.some(ct =>
+          ct.leagues.some(l => l.lbr_status === 'running' || l.lbr_status === 'pending')
+        )
+        if (needsPoll) loadLeagues()
+        return c
+      })
+    }, 5000)
+    return () => clearInterval(iv)
+  }, [])
+
+  async function loadLeagues() {
+    try {
+      const { leagues } = await api.getLeagues()
+      // Group by country
+      const grouped = {}
+      for (const l of leagues) {
+        if (!grouped[l.country]) grouped[l.country] = { name: l.country, emoji: l.emoji, leagues: [], open: true }
+        grouped[l.country].leagues.push(l)
+      }
+      setCountries(Object.values(grouped))
+    } catch (e) {
+      console.error('Failed to load leagues:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const addCountry = () => {
-    if (!newCountry.trim()) return
-    const emojis = { england: '🏴', spain: '🇪🇸', germany: '🇩🇪', france: '🇫🇷', italy: '🇮🇹', georgia: '🇬🇪', portugal: '🇵🇹' }
-    const id = newCountry.toLowerCase().replace(/\s+/g, '-')
-    if (countries.find(c => c.id === id)) return
-    setCountries([...countries, { id, name: newCountry, emoji: emojis[newCountry.toLowerCase()] || '🌍', leagues: [], open: true }])
+    const name = newCountry.trim()
+    if (!name) return
+    if (countries.find(c => c.name.toLowerCase() === name.toLowerCase())) return
+    setCountries([...countries, { name, emoji: getEmoji(name), leagues: [], open: true }])
     setNewCountry('')
   }
 
-  const toggleCountry = (id) => {
-    setCountries(countries.map(c => c.id === id ? { ...c, open: !c.open } : c))
+  const toggleCountry = (name) => {
+    setCountries(countries.map(c => c.name === name ? { ...c, open: !c.open } : c))
   }
 
-  const addLeague = (countryId) => {
-    const val = (newLeagues[countryId] || '').trim()
+  const addLeague = async (countryName) => {
+    const val = (newLeagues[countryName] || '').trim()
     if (!val) return
-    setCountries(countries.map(c => c.id === countryId ? { ...c, leagues: [...c.leagues, val] } : c))
-    setNewLeagues({ ...newLeagues, [countryId]: '' })
+    const country = countries.find(c => c.name === countryName)
+    if (!country) return
+
+    // Optimistic update
+    const tempId = `temp-${Date.now()}`
+    setCountries(countries.map(c =>
+      c.name === countryName
+        ? { ...c, leagues: [...c.leagues, { id: tempId, name: val, country: countryName, lbr_status: 'pending' }] }
+        : c
+    ))
+    setNewLeagues({ ...newLeagues, [countryName]: '' })
+
+    try {
+      await api.addLeague({ country: countryName, name: val, emoji: getEmoji(countryName) })
+      // Reload to get real ID + lbr_status
+      loadLeagues()
+    } catch (e) {
+      console.error('Add league failed:', e)
+      // Rollback
+      setCountries(countries.map(c =>
+        c.name === countryName
+          ? { ...c, leagues: c.leagues.filter(l => l.id !== tempId) }
+          : c
+      ))
+    }
   }
 
-  const removeLeague = (countryId, league) => {
-    setCountries(countries.map(c => c.id === countryId ? { ...c, leagues: c.leagues.filter(l => l !== league) } : c))
+  const removeLeague = async (leagueId, countryName, leagueName) => {
+    // Optimistic
+    setCountries(countries.map(c =>
+      c.name === countryName
+        ? { ...c, leagues: c.leagues.filter(l => l.id !== leagueId && l.name !== leagueName) }
+        : c
+    ))
+    try {
+      await api.deleteLeague(leagueId)
+    } catch (e) {
+      console.error('Delete failed:', e)
+      loadLeagues()
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="leagues-panel">
+        <div className="loading-state">
+          <div className="spinner">⟳</div>
+          <p>Loading leagues…</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -43,31 +143,43 @@ export default function LeaguesPanel() {
         />
         <button onClick={addCountry}>+ Add Country</button>
       </div>
+
+      {countries.length === 0 && (
+        <div className="empty-state" style={{ padding: '2rem' }}>
+          <p>No countries yet — add one above</p>
+        </div>
+      )}
+
       {countries.map(c => (
-        <div key={c.id} className="country-block">
-          <div className="country-header" onClick={() => toggleCountry(c.id)}>
+        <div key={c.name} className="country-block">
+          <div className="country-header" onClick={() => toggleCountry(c.name)}>
             <span>{c.emoji}</span>
             <span className="country-name">{c.name}</span>
             <span className="country-count">{c.leagues.length} leagues</span>
             <span className={"chev " + (c.open ? 'open' : '')}>›</span>
           </div>
+
           {c.open && (
             <div className="leagues-inner">
               {c.leagues.map(l => (
-                <div key={l} className="league-row">
-                  <span>{l}</span>
-                  <span className="st-ready">Ready</span>
-                  <button className="del-btn" onClick={() => removeLeague(c.id, l)}>×</button>
+                <div key={l.id} className="league-row">
+                  <span>{l.name}</span>
+                  <LbrStatus status={l.lbr_status} />
+                  {l.lbr_status === 'done' && <span className="st-ready">Ready</span>}
+                  <button
+                    className="del-btn"
+                    onClick={() => removeLeague(l.id, c.name, l.name)}
+                  >×</button>
                 </div>
               ))}
               <div className="add-league-row">
                 <input
-                  value={newLeagues[c.id] || ''}
-                  onChange={e => setNewLeagues({ ...newLeagues, [c.id]: e.target.value })}
-                  placeholder="Add league..."
-                  onKeyDown={e => e.key === 'Enter' && addLeague(c.id)}
+                  value={newLeagues[c.name] || ''}
+                  onChange={e => setNewLeagues({ ...newLeagues, [c.name]: e.target.value })}
+                  placeholder="Add league…"
+                  onKeyDown={e => e.key === 'Enter' && addLeague(c.name)}
                 />
-                <button onClick={() => addLeague(c.id)}>+ Add</button>
+                <button onClick={() => addLeague(c.name)}>+ Add</button>
               </div>
             </div>
           )}

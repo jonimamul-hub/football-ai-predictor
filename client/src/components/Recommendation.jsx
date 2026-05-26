@@ -1,83 +1,225 @@
 import { useState } from 'react'
+import { api } from '../api'
 
-const MOCK_BTTS = [
-  { id: 1, match: 'Arsenal vs Chelsea', league: '🏴 Premier League · R38', date: '26.05.2026', verdict: 'YES',
-    factors: ['High motivation — both need points', 'Derby effect — historically open'],
-    stats: ['Last 5 BTTS: 4/5 (80%)', 'H2H last 6: BTTS 5/6'] },
-  { id: 2, match: 'Barcelona vs Atletico', league: '🇪🇸 La Liga · R38', date: '26.05.2026', verdict: 'YES',
-    factors: ['Last matchday — open game expected'],
-    stats: ['Last 5 BTTS: 5/5 (100%)'] },
-]
+const LEVEL_CLASS = { Ideal: 'ideal', Good: 'good', Weak: 'weak', Dormant: 'dormant' }
 
-const MOCK_DRAW = [
-  { id: 1, match: 'Everton vs Wolves', league: '🏴 Premier League · R38', date: '26.05.2026', verdict: 'DRAW',
-    factors: ['Both teams safe — low pressure'],
-    stats: ['H2H last 6: Draw 4/6'] },
-  { id: 2, match: 'Sevilla vs Betis', league: '🇪🇸 La Liga · R38', date: '26.05.2026', verdict: 'DRAW',
-    factors: ['El Gran Derbi — emotional rivalry'],
-    stats: ['H2H last 8: Draw 5/8'] },
-]
+function SignalRow({ s }) {
+  return (
+    <div className="signal-row">
+      <span className={`sig ${LEVEL_CLASS[s.level] || 'dormant'}`}>{s.level}</span>
+      <span>{s.name}</span>
+      {s.note && <span className="sig-note"> — {s.note}</span>}
+    </div>
+  )
+}
 
-export default function Recommendation({ type }) {
-  const [subTab, setSubTab] = useState('top')
-  const [expanded, setExpanded] = useState(null)
-  const [loaded, setLoaded] = useState(false)
-  const [removed, setRemoved] = useState([])
+export default function Recommendation({ type, leagues = [] }) {
+  const [subTab,    setSubTab]    = useState('top')
+  const [stage,     setStage]     = useState('idle')  // idle|searching|analyzing|done|error
+  const [searchHits, setSearchHits] = useState([])    // raw search results
+  const [recs,      setRecs]      = useState([])      // final AI picks
+  const [expanded,  setExpanded]  = useState(null)
+  const [removed,   setRemoved]   = useState(new Set())
+  const [error,     setError]     = useState('')
 
-  const matches = type === 'btts' ? MOCK_BTTS : MOCK_DRAW
-  const visible = matches.filter(m => !removed.includes(m.id))
+  const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '.')
 
-  const remove = (id) => setRemoved([...removed, id])
+  // ── Get Recommendations flow ──────────────────────────────────────────
+  const getRecommendations = async () => {
+    if (!leagues.length) {
+      setError('Add leagues first in the Leagues section')
+      setStage('error')
+      return
+    }
+    setStage('searching')
+    setError('')
+    setRecs([])
+    setSearchHits([])
+    setRemoved(new Set())
+
+    try {
+      // Step 1 — AI #2 Search
+      const { matches } = await api.search(today, leagues)
+      setSearchHits(matches)
+
+      if (!matches.length) {
+        setError(`No matches found for ${today}. Try again later or check your leagues.`)
+        setStage('error')
+        return
+      }
+
+      // Step 2 — AI #1 Recommend
+      setStage('analyzing')
+      const endpoint = type === 'draw' ? api.recommendDraw : api.recommendBTTS
+      const { recommendations } = await endpoint(matches)
+
+      setRecs(recommendations || [])
+      setStage('done')
+    } catch (e) {
+      setError(e.message)
+      setStage('error')
+    }
+  }
+
+  const reset = () => {
+    setStage('idle')
+    setRecs([])
+    setSearchHits([])
+    setRemoved(new Set())
+    setError('')
+  }
+
+  const moveToHistory = async (rec) => {
+    try {
+      await api.addHistory({
+        type,
+        match_name: rec.match,
+        league:     rec.league,
+        match_date: rec.date,
+        verdict:    rec.verdict,
+        source:     'REC',
+        reasoning:  rec.reasoning
+      })
+    } catch (e) {
+      console.error('History save failed:', e)
+    }
+    setRemoved(prev => new Set([...prev, rec.match]))
+  }
+
+  const badgeClass = (v) => {
+    if (v === 'YES')  return 'badge-yes'
+    if (v === 'DRAW') return 'badge-draw'
+    return 'badge-no'
+  }
+
+  const visible = recs.filter(r => !removed.has(r.match))
+
+  // ── Status label ─────────────────────────────────────────────────────
+  const statusLabel = {
+    idle:      null,
+    searching: '🔍 AI #2 searching matches…',
+    analyzing: '🧠 AI #1 selecting top picks…',
+    error:     null,
+    done:      null,
+  }[stage]
 
   return (
     <div className="card">
       <div className="sub-nav">
-        <button className={"snb " + (subTab === 'top' ? 'active' : '')} onClick={() => setSubTab('top')}>TOP</button>
-        <button className={"snb " + (subTab === 'search' ? 'active' : '')} onClick={() => setSubTab('search')}>Search Results</button>
+        <button className={"snb " + (subTab === 'top'    ? 'active' : '')} onClick={() => setSubTab('top')}>
+          {type === 'draw' ? 'TOP 2' : 'TOP 3'}
+        </button>
+        <button className={"snb " + (subTab === 'search' ? 'active' : '')} onClick={() => setSubTab('search')}>
+          Search Results {searchHits.length > 0 && `(${searchHits.length})`}
+        </button>
       </div>
+
+      {/* ── TOP tab ──────────────────────────────────────────────────── */}
       {subTab === 'top' && (
         <div>
-          {!loaded ? (
+          {/* Loading states */}
+          {(stage === 'searching' || stage === 'analyzing') && (
+            <div className="loading-state">
+              <div className="spinner">⟳</div>
+              <p>{statusLabel}</p>
+            </div>
+          )}
+
+          {/* Error */}
+          {stage === 'error' && (
+            <div className="empty-state">
+              <p style={{ color: '#f87171' }}>⚠ {error}</p>
+              <button className="btn-secondary" onClick={reset}>↺ Try again</button>
+            </div>
+          )}
+
+          {/* Idle — no recommendations yet */}
+          {stage === 'idle' && (
             <div className="empty-state">
               <p>No recommendations yet</p>
-              <button className="btn-primary" onClick={() => setLoaded(true)}>Get Recommendations ↗</button>
+              <button className="btn-primary" onClick={getRecommendations}>
+                Get Recommendations ↗
+              </button>
             </div>
-          ) : visible.length === 0 ? (
+          )}
+
+          {/* Done — show results */}
+          {stage === 'done' && visible.length === 0 && (
             <div className="empty-state">
-              <p>All matches moved to history</p>
-              <button className="btn-secondary" onClick={() => { setLoaded(false); setRemoved([]); }}>Refresh</button>
+              <p>No qualifying picks found for today</p>
+              <button className="btn-secondary" onClick={reset}>↺ Refresh</button>
             </div>
-          ) : (
-            visible.map(m => (
-              <div key={m.id} className="match-row">
-                <div className="match-head" onClick={() => setExpanded(expanded === m.id ? null : m.id)}>
-                  <div className="match-info">
-                    <div className="match-name">{m.match}</div>
-                    <div className="match-meta">{m.league}</div>
-                  </div>
-                  <span className="match-date">{m.date}</span>
-                  <span className={"badge " + (m.verdict === 'YES' ? 'badge-yes' : 'badge-draw')}>{m.verdict}</span>
-                  <span className={"chev " + (expanded === m.id ? 'open' : '')}>›</span>
-                </div>
-                {expanded === m.id && (
-                  <div className="match-detail pad">
-                    <div className="detail-label">📌 Factors</div>
-                    {m.factors.map((f, i) => <div key={i} className="signal-row"><span className="sig ideal">Ideal</span> {f}</div>)}
-                    <div className="detail-label">📊 Statistics</div>
-                    {m.stats.map((s, i) => <div key={i} className="signal-row"><span className="sig ideal">Ideal</span> {s}</div>)}
-                    <div className="detail-actions">
-                      <button className="btn-primary" onClick={() => remove(m.id)}>↓ Move to History</button>
+          )}
+
+          {stage === 'done' && visible.length > 0 && (
+            <>
+              {visible.map((rec, i) => (
+                <div key={rec.match + i} className="match-row">
+                  <div
+                    className="match-head"
+                    onClick={() => setExpanded(expanded === i ? null : i)}
+                  >
+                    <div className="match-info">
+                      <div className="match-name">{rec.match}</div>
+                      <div className="match-meta">{rec.league}</div>
                     </div>
+                    <span className="match-date">{rec.date}</span>
+                    {rec.confidence != null && (
+                      <span className="conf-badge">{rec.confidence}%</span>
+                    )}
+                    <span className={`badge ${badgeClass(rec.verdict)}`}>{rec.verdict}</span>
+                    <span className={"chev " + (expanded === i ? 'open' : '')}>›</span>
                   </div>
-                )}
+
+                  {expanded === i && (
+                    <div className="match-detail pad">
+                      {(rec.matched_signals || []).length > 0 && (
+                        <>
+                          <div className="detail-label">📌 Signals</div>
+                          {rec.matched_signals.map((s, j) => <SignalRow key={j} s={s} />)}
+                        </>
+                      )}
+                      {rec.reasoning && (
+                        <>
+                          <div className="detail-label">🧠 Reasoning</div>
+                          <p className="reasoning-text">{rec.reasoning}</p>
+                        </>
+                      )}
+                      <div className="detail-actions">
+                        <button className="btn-primary" onClick={() => moveToHistory(rec)}>
+                          ↓ Move to History
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div style={{ padding: '10px 14px', borderTop: '1px solid #1c1f2e' }}>
+                <button className="btn-secondary" onClick={reset}>↺ Refresh</button>
               </div>
-            ))
+            </>
           )}
         </div>
       )}
+
+      {/* ── Search Results tab ───────────────────────────────────────── */}
       {subTab === 'search' && (
-        <div className="pad">
-          <p style={{color: '#8b8fa8', fontSize: '13px'}}>Search results appear after recommendation...</p>
+        <div>
+          {searchHits.length === 0 ? (
+            <div className="empty-state" style={{ padding: '1.5rem' }}>
+              <p>Search results appear after clicking "Get Recommendations"</p>
+            </div>
+          ) : (
+            searchHits.map((m, i) => (
+              <div key={i} className="hist-row">
+                <div className="hist-match">
+                  <div className="hist-name">{m.match}</div>
+                  <div className="hist-meta">{m.league} · {m.date}</div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>
