@@ -3,8 +3,15 @@
   "version": "1.0.0",
   "description": "Football AI Predictor — monorepo root",
   "scripts": {
-    "build": "cd client && npm install && npm run build && cd ../server && npm ci",
+    "build": "cd client && npm install && npm run build",
     "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.21.0"
   },
   "engines": {
     "node": ">=22"
