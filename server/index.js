@@ -95,7 +95,7 @@ app.use(cors());
 app.use(express.json());
 
 // ─── Health ───────────────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.json({ status: 'OK' }));
+app.get('/health', (_, res) => res.json({ status: 'OK', v: 4 }));
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  LEAGUES
