@@ -1,5 +1,6 @@
 const express = require('express');
 const cors    = require('cors');
+const path    = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
@@ -358,6 +359,16 @@ async function getSignals(type) {
     stats:   rows.filter(r => r.category === 'stat')
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  STATIC CLIENT BUILD  (must be LAST, after all /api routes)
+// ═══════════════════════════════════════════════════════════════════════════
+const CLIENT_DIST = path.join(__dirname, '../client/dist');
+app.use(express.static(CLIENT_DIST));
+// SPA fallback — serve index.html for any non-API route so React Router works
+app.get('*', (req, res) => {
+  res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+});
 
 // ─── Boot ─────────────────────────────────────────────────────────────────
 initDB().then(() => {
