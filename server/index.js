@@ -61,16 +61,31 @@ async function initDB() {
 
   // Idempotent column additions for existing deployments
   // Run each statement separately so one failure doesn't block the others
-  const migrations = [
+  const colMigrations = [
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS emoji        VARCHAR(10) DEFAULT '🌍'`,
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS lbr_status   VARCHAR(20) DEFAULT 'pending'`,
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS signal_count INTEGER     DEFAULT 0`,
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS note         TEXT        DEFAULT ''`,
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS leagues      TEXT[]      DEFAULT '{}'`,
   ];
-  for (const sql of migrations) {
+  for (const sql of colMigrations) {
     await pool.query(sql);
   }
+
+  // Idempotent constraint additions — DO/EXCEPTION ignores "already exists"
+  await pool.query(`
+    DO $$
+    BEGIN
+      ALTER TABLE leagues ADD UNIQUE (country, name);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+
+    DO $$
+    BEGIN
+      ALTER TABLE signals ADD UNIQUE (type, category, name);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
 
   console.log('✅ DB ready');
 }
