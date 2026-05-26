@@ -62,11 +62,12 @@ async function initDB() {
   // Idempotent column additions for existing deployments
   // Run each statement separately so one failure doesn't block the others
   const colMigrations = [
-    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS emoji        VARCHAR(10) DEFAULT '🌍'`,
-    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS lbr_status   VARCHAR(20) DEFAULT 'pending'`,
-    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS signal_count INTEGER     DEFAULT 0`,
-    `ALTER TABLE signals ADD COLUMN IF NOT EXISTS note         TEXT        DEFAULT ''`,
-    `ALTER TABLE signals ADD COLUMN IF NOT EXISTS leagues      TEXT[]      DEFAULT '{}'`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS emoji        VARCHAR(10)  DEFAULT '🌍'`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS lbr_status   VARCHAR(20)  DEFAULT 'pending'`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS signal_count INTEGER      DEFAULT 0`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS lbr_error    TEXT         DEFAULT NULL`,
+    `ALTER TABLE signals ADD COLUMN IF NOT EXISTS note         TEXT         DEFAULT ''`,
+    `ALTER TABLE signals ADD COLUMN IF NOT EXISTS leagues      TEXT[]       DEFAULT '{}'`,
   ];
   for (const sql of colMigrations) {
     await pool.query(sql);
@@ -200,7 +201,10 @@ async function runLBRForLeague(league) {
     console.log(`✅ LBR done for ${league.name} — ${count} signals upserted`);
   } catch (err) {
     console.error(`❌ LBR failed for ${league.name}:`, err.message);
-    await pool.query("UPDATE leagues SET lbr_status='failed' WHERE id=$1", [league.id]).catch(() => {});
+    await pool.query(
+      "UPDATE leagues SET lbr_status='failed', lbr_error=$2 WHERE id=$1",
+      [league.id, String(err.message || err).slice(0, 500)]
+    ).catch(() => {});
   }
 }
 
