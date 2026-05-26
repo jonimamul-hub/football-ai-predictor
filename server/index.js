@@ -96,7 +96,11 @@ app.use(cors());
 app.use(express.json());
 
 // ─── Health ───────────────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.json({ status: 'OK', v: 4 }));
+app.get('/health', (_, res) => res.json({
+  status: 'OK',
+  v: 5,
+  anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'
+}));
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  LEAGUES
