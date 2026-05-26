@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Football AI Predictor — monorepo root",
   "scripts": {
-    "build": "cd client && npm install && npm run build",
+    "build": "rm -rf server/node_modules && cd client && npm install && npm run build",
     "start": "node server/index.js"
   },
   "dependencies": {
