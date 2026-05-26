@@ -1,117 +1,73 @@
-// AI #2 — LBR Skill (League-Based Research)
-// Uses web_search_20250305 to find real season data, then generates
-// deep WHY-based prediction signals for BTTS and Draw outcomes.
+// AI — LBR (League-Based Research)
+// Uses web_search_20250305 to freely research a league online,
+// then generates WHY-based BTTS and Draw prediction signals.
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const SYSTEM = `You are a world-class football scout and data analyst performing deep League-Based Research (LBR).
+// Keep the system prompt focused and concrete — complex prompts cause Claude
+// to over-think and produce prose instead of JSON.
+const SYSTEM = `You are a football data analyst. Research a football league using web search, then output prediction signals as JSON.
 
-YOUR MISSION: analyze a specific football league across 2024/25 (current) and 2023/24 (previous) seasons.
-Generate HIGH-QUALITY prediction signals explaining WHY certain outcomes happen in THIS league.
+After researching, identify WHY certain outcomes happen in this specific league:
 
-Use web search to gather REAL data before generating signals. Search for:
-  - BTTS (both teams score) statistics and rates
-  - Draw frequencies, patterns, and context
-  - Tactical/style analysis for this league
-  - Match reports showing WHY teams scored or didn't
+BTTS signals — WHY do both teams score (or not)?
+  Examples of good factors: high defensive line + press creates gaps, both keepers leaked heavily, high motivation context, open H2H history
+  Examples of good stats: BTTS rate ≥ 65% when top-6 meet, avg goals ≥ 2.8/game in top-half clashes
 
-SIGNAL TYPES:
-  Factors   — qualitative causes (tactical style, motivation, rivalry, form context)
-  Statistics — quantifiable thresholds ("BTTS rate ≥ 65% when both top-6 teams meet")
+Draw signals — WHY does neither team win?
+  Examples of good factors: tactical symmetry, away team content with a point, derby/local rivalry mental block, mid-table stasis
+  Examples of good stats: draw rate ≥ 30% when teams are within 3 places, draw rate doubles in final 10 matches when both safe
 
-SIGNAL QUALITY:
-  Ideal   — >70% hit rate, confirmed across multiple seasons
-  Good    — 55–70% hit rate, solid track record
-  Weak    — 40–55%, some correlation but needs more data
-  Dormant — <40% or insufficient evidence
+Signal quality levels:
+  Ideal   — >70% confirmed, seen across both seasons
+  Good    — 55-70%, solid pattern
+  Weak    — 40-55%, emerging pattern
+  Dormant — <40% or not enough data
 
-WHAT TO LOOK FOR:
+CRITICAL: Output ONLY the JSON below — no prose, no markdown fences, no explanation.
 
-BTTS=YES patterns — WHY do both teams score?
-  • High defensive line + high press → gaps → both teams find space
-  • Both keepers/defenders leaked goals that season
-  • Specific motivation context: both NEED to win (chasing points, relegation, cups)
-  • H2H history: these clubs historically play open games
-  • League-wide culture: attacking football rewarded, compact defending rare
-
-BTTS=NO patterns — WHY does one team keep a clean sheet?
-  • Strong home keeper vs weak away strikers
-  • Away team parks the bus with lead mindset
-  • Dead rubber: neither team attacks with purpose
-  • League low-scoring culture
-
-DRAW patterns — WHY does neither team win?
-  • Tactical symmetry: mirror formations cancel each other out
-  • Away team content with point (narrow standings)
-  • Derby / local rivalry: neither concedes ground mentally
-  • Mid-table stasis: no pressure to win or avoid losing
-  • Both managers defensive
-
-Be SPECIFIC. Avoid generic statements like "both teams can score." Name real patterns from THIS league.
-
-Return ONLY valid JSON. No markdown fences, no explanation outside the JSON.`;
-
-
-async function runLBR(country, leagueName) {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const userPrompt = `Perform deep League-Based Research for: "${leagueName}" (${country})
-
-Seasons: 2024/25 (current) + 2023/24 (previous)
-
-STEP 1 — Research (use web search):
-  Search 1: "${leagueName} ${country} BTTS statistics 2024 2025"
-  Search 2: "${leagueName} draw rate analysis 2024 2025"
-  Search 3: "${leagueName} 2023 2024 goals per game tactical analysis"
-
-STEP 2 — Identify WHY patterns:
-  For BTTS: When do BOTH teams score in this specific league? What causes it?
-  For Draws: When does neither team win? What contexts produce draws here?
-
-STEP 3 — Return signals. Use this EXACT JSON structure:
 {
   "btts": {
     "factors": [
-      {
-        "name": "Specific WHY factor (not generic) — what causes BTTS in ${leagueName}",
-        "level": "Ideal|Good|Weak|Dormant",
-        "note": "One-sentence evidence from real season data"
-      }
+      {"name": "specific WHY factor", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence from real data"}
     ],
     "stats": [
-      {
-        "name": "Specific measurable threshold in ${leagueName}",
-        "level": "Ideal|Good|Weak|Dormant",
-        "note": "One-sentence evidence"
-      }
+      {"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence"}
     ]
   },
   "draw": {
     "factors": [
-      {
-        "name": "Specific WHY factor for draws in ${leagueName}",
-        "level": "Ideal|Good|Weak|Dormant",
-        "note": "One-sentence evidence"
-      }
+      {"name": "specific WHY factor for draws", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence"}
     ],
     "stats": [
-      {
-        "name": "Specific measurable threshold for draws in ${leagueName}",
-        "level": "Ideal|Good|Weak|Dormant",
-        "note": "One-sentence evidence"
-      }
+      {"name": "specific measurable threshold for draws", "level": "Ideal|Good|Weak|Dormant", "note": "one-sentence evidence"}
     ]
   }
-}
+}`;
 
-Provide 5–8 signals per category. Only include signals backed by evidence you actually found.`;
 
-  const messages = [{ role: 'user', content: userPrompt }];
+async function runLBR(country, leagueName) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
-  let iterations = 0;
-  while (iterations < 15) {
-    iterations++;
+  const client = new Anthropic({ apiKey });
 
+  // Let Claude decide what to search — no prescribed queries, no hardcoded sources
+  const userMessage =
+    `Research the "${leagueName}" league in ${country} for the 2024/25 and 2023/24 seasons.\n\n` +
+    `Use web search to freely find information from any online source — statistics sites, football analytics, ` +
+    `match reports, tactical blogs, or anything relevant. Search as many times as needed.\n\n` +
+    `Focus on discovering:\n` +
+    `- Goals per game, BTTS rates, clean sheet rates\n` +
+    `- Draw frequencies and the contexts that produce them\n` +
+    `- Tactical styles of the top/bottom clubs\n` +
+    `- Any notable patterns that explain WHY outcomes happen\n\n` +
+    `When you have enough information, output the JSON signals. 5–8 signals per category.`;
+
+  const messages = [{ role: 'user', content: userMessage }];
+  let lastText = '';
+
+  for (let i = 0; i < 25; i++) {
     const resp = await client.beta.messages.create({
       model:      'claude-opus-4-5',
       max_tokens: 8000,
@@ -121,7 +77,7 @@ Provide 5–8 signals per category. Only include signals backed by evidence you 
       betas:      ['web-search-2025-03-05'],
     });
 
-    // Accumulate assistant turn (same pattern as search.js)
+    // Always accumulate the full assistant turn
     messages.push({ role: 'assistant', content: resp.content });
 
     if (resp.stop_reason === 'end_turn') {
@@ -129,83 +85,115 @@ Provide 5–8 signals per category. Only include signals backed by evidence you 
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
+      lastText = text || lastText;
+
       const result = parseLBR(text);
       if (result) return result;
-      // No valid JSON found — try one more time asking for the JSON
-      if (iterations < 14) {
-        messages.push({ role: 'user', content: 'Please output the JSON result now.' });
-        continue;
+
+      // Got prose but no JSON — nudge once more
+      if (i < 22) {
+        messages.push({
+          role: 'user',
+          content: 'Output ONLY the JSON now. No prose, no markdown fences. Start with { and end with }.'
+        });
       }
-      return null;
+      continue;
     }
 
     if (resp.stop_reason === 'tool_use') {
-      // Acknowledge each tool_use block so Claude can continue searching
-      const toolResults = resp.content
+      // web_search_20250305: Anthropic runs the search server-side.
+      // We acknowledge every tool_use block; the results are injected automatically.
+      const acks = resp.content
         .filter(b => b.type === 'tool_use')
         .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
-      if (toolResults.length > 0) {
-        messages.push({ role: 'user', content: toolResults });
+      if (acks.length > 0) {
+        messages.push({ role: 'user', content: acks });
       }
-    } else {
-      break; // Unexpected stop reason
+      continue;
+    }
+
+    // Unexpected stop reason — bail
+    break;
+  }
+
+  // Last-ditch: try to parse whatever Claude last produced
+  return parseLBR(lastText);
+}
+
+
+// Robust JSON extraction — depth-tracks to find all top-level objects,
+// tries them largest-first, skips bad candidates gracefully.
+function parseLBR(text) {
+  if (!text) return null;
+
+  // First: strip markdown fences if present
+  text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+
+  // Depth-track to collect all balanced { ... } blocks
+  const candidates = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        candidates.push(text.slice(start, i + 1));
+        start = -1;
+      }
     }
   }
 
-  // Last-ditch: extract any text from the last assistant message
-  const lastAssist = [...messages].reverse().find(m => m.role === 'assistant');
-  if (lastAssist) {
-    const text = (lastAssist.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
-    if (text) return parseLBR(text);
+  // Try largest to smallest — the full signal object will be the biggest block
+  candidates.sort((a, b) => b.length - a.length);
+
+  for (const raw of candidates) {
+    try {
+      const data = JSON.parse(raw);
+      if (data.btts && data.draw) return normaliseSignals(data);
+    } catch {
+      // malformed JSON — try next candidate
+    }
   }
+
   return null;
 }
 
 
-function parseLBR(text) {
-  try {
-    // Extract JSON block — handle both {...} and possible markdown
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    const data = JSON.parse(m[0]);
-    if (!data.btts || !data.draw) return null;
-
-    // Normalise each section
-    for (const outcome of ['btts', 'draw']) {
-      for (const cat of ['factors', 'stats']) {
-        if (!Array.isArray(data[outcome][cat])) {
-          data[outcome][cat] = [];
-        }
-        data[outcome][cat] = data[outcome][cat]
-          .map(s => ({
-            name:  String(s.name  || '').trim(),
-            level: validateLevel(s.level),
-            note:  String(s.note  || s.evidence || s.evidence_note || '').trim(),
-          }))
-          .filter(s => s.name.length > 0);
-      }
+function normaliseSignals(data) {
+  for (const outcome of ['btts', 'draw']) {
+    if (!data[outcome] || typeof data[outcome] !== 'object') {
+      data[outcome] = { factors: [], stats: [] };
     }
-    return data;
-  } catch (e) {
-    console.error('LBR parse error:', e.message);
-    return null;
+    for (const cat of ['factors', 'stats']) {
+      if (!Array.isArray(data[outcome][cat])) data[outcome][cat] = [];
+      data[outcome][cat] = data[outcome][cat]
+        .map(s => ({
+          name:  String(s.name  || '').trim(),
+          level: validateLevel(s.level),
+          note:  String(s.note  || s.evidence || s.evidence_note || '').trim(),
+        }))
+        .filter(s => s.name.length > 0);
+    }
   }
+  return data;
 }
+
 
 function validateLevel(level) {
   const VALID = ['Ideal', 'Good', 'Weak', 'Dormant'];
   if (VALID.includes(level)) return level;
-  // Fuzzy match
   if (typeof level === 'string') {
     const l = level.toLowerCase();
-    if (l.includes('ideal')) return 'Ideal';
-    if (l.includes('good') || l.includes('solid')) return 'Good';
-    if (l.includes('weak') || l.includes('some')) return 'Weak';
+    if (l.includes('ideal'))                        return 'Ideal';
+    if (l.includes('good') || l.includes('solid'))  return 'Good';
+    if (l.includes('weak') || l.includes('some'))   return 'Weak';
   }
   return 'Dormant';
 }
+
 
 module.exports = { runLBR };

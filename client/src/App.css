@@ -661,6 +661,16 @@
 .country-name  { flex: 1; font-size: 13px; font-weight: 500; color: #e8e8e8; }
 .country-count { font-size: 11px; color: #4a4d5a; }
 
+/* Country delete — slightly larger than league del-btn, hidden until hover */
+.country-del-btn {
+  width: 22px !important;
+  height: 22px !important;
+  font-size: 14px !important;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s !important;
+}
+.country-header:hover .country-del-btn { opacity: 1; }
+
 .leagues-inner { background: #10131a; border-top: 1px solid #1c1f2e; }
 
 .league-row {

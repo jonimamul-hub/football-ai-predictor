@@ -76,6 +76,20 @@ export default function LeaguesPanel() {
     setCountries(countries.map(c => c.name === name ? { ...c, open: !c.open } : c))
   }
 
+  const removeCountry = async (countryName) => {
+    const country = countries.find(c => c.name === countryName)
+    if (!country) return
+    // Optimistic: remove from UI immediately
+    setCountries(prev => prev.filter(c => c.name !== countryName))
+    // Delete every league under this country in parallel
+    try {
+      await Promise.all(country.leagues.map(l => api.deleteLeague(l.id)))
+    } catch (e) {
+      console.error('Delete country failed:', e)
+      loadLeagues()
+    }
+  }
+
   const addLeague = async (countryName) => {
     const val = (newLeagues[countryName] || '').trim()
     if (!val) return
@@ -157,6 +171,11 @@ export default function LeaguesPanel() {
             <span className="country-name">{c.name}</span>
             <span className="country-count">{c.leagues.length} leagues</span>
             <span className={"chev " + (c.open ? 'open' : '')}>›</span>
+            <button
+              className="del-btn country-del-btn"
+              title="Delete country and all its leagues"
+              onClick={e => { e.stopPropagation(); removeCountry(c.name) }}
+            >×</button>
           </div>
 
           {c.open && (
