@@ -1,5 +1,2 @@
-[build]
-buildCommand = "cd client && npm install && npm run build && cd ../server && npm install"
-
-[deploy]
-startCommand = "cd server && node index.js"
+# Railway uses package.json scripts: build + start
+# buildCommand and startCommand are set in the Railway service instance settings
