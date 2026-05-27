@@ -1,10 +1,13 @@
-// AI #2 — Search Agent
+// AI #2 — Search Agent (FALLBACK only)
+// Called ONLY when the 365scores scraper returned no matches for a league.
+// Primary source: scraper (index.js). This agent is the last resort.
 // MISSION: Find and deliver complete, reliable factual information about requested matches.
 // If data is not found, SKIP-A is recorded. Never stop searching. Waterfall strategy.
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const SYSTEM = `Your ONLY mission: Find and deliver complete, reliable factual information about requested matches or leagues. You are responsible — if data is not found, SKIP-A is recorded against you. Never stop searching. Use web_search freely across the entire internet. Waterfall: try multiple searches until you find data.
+const SYSTEM = `You are the FALLBACK search agent. The primary 365scores scraper had no data for these leagues. Your mission: find the fixture data via web search.
+Find and deliver complete, reliable factual information about requested matches or leagues. You are responsible — if data is not found, SKIP-A is recorded against you. Never stop searching. Use web_search freely across the entire internet. Waterfall: try multiple searches until you find data.
 
 SEARCH STRATEGY:
 1. If a [LBR-verified query] hint is provided for a league — START with that exact query (adapt it for fixture search on the target date). This query is proven to work for this league.

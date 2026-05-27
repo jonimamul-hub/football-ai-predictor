@@ -138,8 +138,9 @@ app.use(express.json());
 // ─── Health ───────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
   status: 'OK',
-  v: 13,
-  anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'
+  v: 14,
+  anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING',
+  scraper_url:   SCRAPER_URL ? 'SET' : 'MISSING',
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -405,20 +406,23 @@ app.post('/api/search', async (req, res) => {
         }
       }
 
-      // ── Scraper fetch ────────────────────────────────────────────────────
+      // ── Scraper fetch (PRIMARY source) ──────────────────────────────────
       if (scraperLeagues.length > 0) {
         const compIds = scraperLeagues.map(l => l.competition_id).join(',');
-        console.log(`⚽ Scraper fetch: date=${date} competition_ids=${compIds}`);
-        const scraperData = await scraperGet('/fixtures', { date, competition_ids: compIds });
+        console.log(`⚽ Scraper: fetching date=${date} competition_ids=${compIds}`);
+        const scraperData    = await scraperGet('/fixtures', { date, competition_ids: compIds });
         const scraperMatches = scraperData?.matches || [];
-        allMatches.push(...scraperMatches);
-        console.log(`✅ Scraper returned ${scraperMatches.length} matches`);
+        console.log(`⚽ Scraper raw: ${scraperMatches.length} total match(es) across all leagues`);
 
-        // Cache per league
+        let scraperTotal = 0;
         for (const league of scraperLeagues) {
           const leagueKey     = `${league.country}:${league.name}`;
           const leagueMatches = scraperMatches.filter(m => m.competition_id === league.competition_id);
+
           if (leagueMatches.length > 0) {
+            // ✅ Scraper has data — use it, skip Claude for this league
+            allMatches.push(...leagueMatches);
+            scraperTotal += leagueMatches.length;
             const round = leagueMatches[0]?.round || '';
             await pool.query(
               `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
@@ -427,14 +431,19 @@ app.post('/api/search', async (req, res) => {
                  SET matches=$3, round=$4, found_via='scraper', created_at=NOW()`,
               [date, leagueKey, JSON.stringify(leagueMatches), round]
             ).catch(() => {});
-            console.log(`💾 Cached (scraper): ${leagueKey} (${leagueMatches.length} matches)`);
+            console.log(`📦 Scraper: ${leagueKey} → ${leagueMatches.length} matches`);
+          } else {
+            // ⚠ Scraper returned nothing for this league → queue Claude AI fallback
+            console.log(`⚠ Scraper: 0 matches for ${leagueKey} → queuing 🔍 Claude web search fallback`);
+            aiLeagues.push(league);
           }
         }
+        console.log(`📦 Scraper: ${scraperTotal} match(es) found | 🔍 AI fallback queue: ${aiLeagues.length} league(s)`);
       }
 
-      // ── Claude AI fallback for leagues without competition_id ────────────
+      // ── Claude AI fallback (scraper had no data or league has no competition_id) ────
       if (aiLeagues.length > 0) {
-        console.log(`🔍 AI fallback for ${aiLeagues.length} league(s)`);
+        console.log(`🔍 Claude web search fallback for ${aiLeagues.length} league(s): ${aiLeagues.map(l => l.name).join(', ')}`);
 
         const { rows: hintRows } = await pool.query(
           `SELECT name, country, search_query FROM leagues
@@ -450,10 +459,6 @@ app.post('/api/search', async (req, res) => {
 
         const newMatches = await searchMatches(date, aiLeaguesWithHints, timezone ?? 0);
         allMatches.push(...newMatches);
-
-        // Cache AI results per league
-        const aiUncachedLeagues = aiLeagues; // reuse variable below
-        const aiNewMatches      = newMatches;
 
         // Cache AI results per league
         for (const league of aiLeagues) {
@@ -478,8 +483,8 @@ app.post('/api/search', async (req, res) => {
       }
 
     } else if (uncachedLeagues.length > 0) {
-      // ── No scraper configured — pure Claude AI path ─────────────────────
-      console.log(`🔍 AI search (no scraper) for ${uncachedLeagues.length} league(s)`);
+      // ── No SCRAPER_URL configured — pure Claude AI path ─────────────────
+      console.log(`🔍 Claude web search (no scraper configured) for ${uncachedLeagues.length} league(s)`);
       const { rows: hintRows } = await pool.query(
         `SELECT name, country, search_query FROM leagues
          WHERE name = ANY($1::text[]) AND search_query IS NOT NULL AND search_query <> ''`,
