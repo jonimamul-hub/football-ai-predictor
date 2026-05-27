@@ -192,7 +192,7 @@ export default function History({ type }) {
                     className="edit-btn"
                     onClick={e => { e.stopPropagation(); startEdit(r) }}
                     title="Edit score / result"
-                  >✎</button>
+                  >edit</button>
                   {/* Expand chevron on lose rows */}
                   {isLose && (
                     <span className={"chev " + (isExpanded ? 'open' : '')} style={{ fontSize: '16px', marginLeft: '2px' }}>›</span>
