@@ -12,6 +12,26 @@ const { selectTopDraw } = require('./ai/draw');
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
+// ─── Scraper service helper ────────────────────────────────────────────────
+const SCRAPER_URL = process.env.SCRAPER_URL || '';   // set on Railway
+
+async function scraperGet(path, params = {}) {
+  if (!SCRAPER_URL) return null;
+  const url = new URL(path, SCRAPER_URL);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(url.toString(), { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── DB ───────────────────────────────────────────────────────────────────
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -29,6 +49,8 @@ async function initDB() {
       signal_count     INTEGER      DEFAULT 0,
       search_query     TEXT         DEFAULT NULL,
       found_via_detail TEXT         DEFAULT NULL,
+      competition_id   INTEGER      DEFAULT NULL,
+      season_num       INTEGER      DEFAULT NULL,
       created_at       TIMESTAMP    DEFAULT NOW(),
       UNIQUE(country, name)
     );
@@ -82,8 +104,10 @@ async function initDB() {
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS note         TEXT         DEFAULT ''`,
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS leagues      TEXT[]       DEFAULT '{}'`,
     `ALTER TABLE search_cache ADD COLUMN IF NOT EXISTS found_via TEXT DEFAULT 'web_search'`,
-    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS search_query     TEXT DEFAULT NULL`,
-    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS found_via_detail TEXT DEFAULT NULL`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS search_query     TEXT    DEFAULT NULL`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS found_via_detail TEXT    DEFAULT NULL`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS competition_id   INTEGER DEFAULT NULL`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS season_num       INTEGER DEFAULT NULL`,
   ];
   for (const sql of colMigrations) {
     await pool.query(sql);
@@ -114,7 +138,7 @@ app.use(express.json());
 // ─── Health ───────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
   status: 'OK',
-  v: 12,
+  v: 13,
   anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'
 }));
 
@@ -149,8 +173,11 @@ app.post('/api/leagues', async (req, res) => {
     const league = rows[0];
     res.json({ success: true, league });
 
-    // ── LBR fires AFTER response is sent ────────────────────────────────
-    setImmediate(() => runLBRForLeague(league));
+    // ── Background: discover competition_id + run LBR ───────────────────
+    setImmediate(async () => {
+      await discoverCompetitionId(league);
+      runLBRForLeague(league);
+    });
   } catch (err) {
     console.error('POST /api/leagues error:', err.message);
     res.status(500).json({ error: err.message });
@@ -166,6 +193,27 @@ app.delete('/api/leagues/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Discover competition_id from scraper service ─────────────────────────
+async function discoverCompetitionId(league) {
+  if (!SCRAPER_URL) return;
+  try {
+    const data = await scraperGet('/discover', { name: league.name, country: league.country });
+    const comps = data?.competitions || [];
+    if (comps.length === 0) {
+      console.log(`⚠ No competition_id found for ${league.name}`);
+      return;
+    }
+    const best = comps[0];
+    await pool.query(
+      'UPDATE leagues SET competition_id=$1, season_num=$2 WHERE id=$3',
+      [best.id, best.season_num || null, league.id]
+    );
+    console.log(`🔗 competition_id=${best.id} saved for ${league.name} (${best.country})`);
+  } catch (err) {
+    console.warn(`⚠ discoverCompetitionId failed for ${league.name}:`, err.message);
+  }
+}
 
 // ─── Background LBR runner ────────────────────────────────────────────────
 async function runLBRForLeague(league) {
@@ -303,7 +351,7 @@ app.post('/api/search', async (req, res) => {
   if (!date || !leagues?.length) return res.status(400).json({ error: 'date and leagues required' });
 
   try {
-    const allMatches    = [];
+    const allMatches      = [];
     const uncachedLeagues = [];
 
     // ── Per-league cache check ─────────────────────────────────────────────
@@ -322,50 +370,145 @@ app.post('/api/search', async (req, res) => {
       }
     }
 
-    // ── AI search for uncached leagues ─────────────────────────────────────
-    if (uncachedLeagues.length > 0) {
-      console.log(`🔍 Searching ${uncachedLeagues.length} uncached league(s) via AI`);
+    // ── Scraper-first for uncached leagues ─────────────────────────────────
+    if (uncachedLeagues.length > 0 && SCRAPER_URL) {
+      // Load competition_ids from DB
+      const { rows: dbLeagues } = await pool.query(
+        `SELECT name, country, competition_id, season_num, search_query
+         FROM leagues WHERE name = ANY($1::text[])`,
+        [uncachedLeagues.map(l => l.name)]
+      ).catch(() => ({ rows: [] }));
 
-      // Load LBR discovery hints (search_query) for any leagues that were already analysed
-      const uncachedNames = uncachedLeagues.map(l => l.name);
+      const scraperLeagues  = [];
+      const aiLeagues       = [];
+
+      for (const league of uncachedLeagues) {
+        const dbRow = dbLeagues.find(r => r.name === league.name && r.country === league.country);
+        if (dbRow?.competition_id) {
+          scraperLeagues.push({ ...league, competition_id: dbRow.competition_id });
+        } else {
+          // Try to discover competition_id on-the-fly
+          const disc = await scraperGet('/discover', { name: league.name, country: league.country });
+          const comps = disc?.competitions || [];
+          if (comps.length > 0) {
+            const best = comps[0];
+            // Save for future
+            await pool.query(
+              `UPDATE leagues SET competition_id=$1, season_num=$2 WHERE country=$3 AND name=$4`,
+              [best.id, best.season_num || null, league.country, league.name]
+            ).catch(() => {});
+            console.log(`🔗 On-the-fly discovery: ${league.name} → competition_id=${best.id}`);
+            scraperLeagues.push({ ...league, competition_id: best.id });
+          } else {
+            aiLeagues.push(league);
+          }
+        }
+      }
+
+      // ── Scraper fetch ────────────────────────────────────────────────────
+      if (scraperLeagues.length > 0) {
+        const compIds = scraperLeagues.map(l => l.competition_id).join(',');
+        console.log(`⚽ Scraper fetch: date=${date} competition_ids=${compIds}`);
+        const scraperData = await scraperGet('/fixtures', { date, competition_ids: compIds });
+        const scraperMatches = scraperData?.matches || [];
+        allMatches.push(...scraperMatches);
+        console.log(`✅ Scraper returned ${scraperMatches.length} matches`);
+
+        // Cache per league
+        for (const league of scraperLeagues) {
+          const leagueKey     = `${league.country}:${league.name}`;
+          const leagueMatches = scraperMatches.filter(m => m.competition_id === league.competition_id);
+          if (leagueMatches.length > 0) {
+            const round = leagueMatches[0]?.round || '';
+            await pool.query(
+              `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
+               VALUES ($1,$2,$3,$4,'scraper')
+               ON CONFLICT (search_date, league_key) DO UPDATE
+                 SET matches=$3, round=$4, found_via='scraper', created_at=NOW()`,
+              [date, leagueKey, JSON.stringify(leagueMatches), round]
+            ).catch(() => {});
+            console.log(`💾 Cached (scraper): ${leagueKey} (${leagueMatches.length} matches)`);
+          }
+        }
+      }
+
+      // ── Claude AI fallback for leagues without competition_id ────────────
+      if (aiLeagues.length > 0) {
+        console.log(`🔍 AI fallback for ${aiLeagues.length} league(s)`);
+
+        const { rows: hintRows } = await pool.query(
+          `SELECT name, country, search_query FROM leagues
+           WHERE name = ANY($1::text[]) AND search_query IS NOT NULL AND search_query <> ''`,
+          [aiLeagues.map(l => l.name)]
+        ).catch(() => ({ rows: [] }));
+
+        const aiLeaguesWithHints = aiLeagues.map(l => {
+          const hint = hintRows.find(r => r.name === l.name && r.country === l.country);
+          if (hint?.search_query) return { ...l, search_query: hint.search_query };
+          return l;
+        });
+
+        const newMatches = await searchMatches(date, aiLeaguesWithHints, timezone ?? 0);
+        allMatches.push(...newMatches);
+
+        // Cache AI results per league
+        const aiUncachedLeagues = aiLeagues; // reuse variable below
+        const aiNewMatches      = newMatches;
+
+        // Cache AI results per league
+        for (const league of aiLeagues) {
+          const leagueKey     = `${league.country}:${league.name}`;
+          const leagueMatches = newMatches.filter(m => {
+            const mL = (m.league || '').toLowerCase();
+            const qL = league.name.toLowerCase();
+            return mL.includes(qL) || qL.includes(mL);
+          });
+          if (leagueMatches.length > 0) {
+            const round = leagueMatches[0]?.round || '';
+            await pool.query(
+              `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
+               VALUES ($1,$2,$3,$4,'web_search')
+               ON CONFLICT (search_date, league_key) DO UPDATE
+                 SET matches=$3, round=$4, found_via='web_search', created_at=NOW()`,
+              [date, leagueKey, JSON.stringify(leagueMatches), round]
+            ).catch(() => {});
+            console.log(`💾 Cached (AI): ${leagueKey} (${leagueMatches.length} matches)`);
+          }
+        }
+      }
+
+    } else if (uncachedLeagues.length > 0) {
+      // ── No scraper configured — pure Claude AI path ─────────────────────
+      console.log(`🔍 AI search (no scraper) for ${uncachedLeagues.length} league(s)`);
       const { rows: hintRows } = await pool.query(
         `SELECT name, country, search_query FROM leagues
          WHERE name = ANY($1::text[]) AND search_query IS NOT NULL AND search_query <> ''`,
-        [uncachedNames]
+        [uncachedLeagues.map(l => l.name)]
       ).catch(() => ({ rows: [] }));
 
-      const uncachedWithHints = uncachedLeagues.map(l => {
+      const withHints  = uncachedLeagues.map(l => {
         const hint = hintRows.find(r => r.name === l.name && r.country === l.country);
-        if (hint?.search_query) {
-          console.log(`💡 Hint loaded for ${l.name}: "${hint.search_query}"`);
-          return { ...l, search_query: hint.search_query };
-        }
-        return l;
+        return hint?.search_query ? { ...l, search_query: hint.search_query } : l;
       });
-
-      const newMatches = await searchMatches(date, uncachedWithHints, timezone ?? 0);
+      const newMatches = await searchMatches(date, withHints, timezone ?? 0);
       allMatches.push(...newMatches);
 
-      // ── Cache results per league (store only when matches found) ─────────
       for (const league of uncachedLeagues) {
-        const leagueKey = `${league.country}:${league.name}`;
-        // Flexible match: league name contains our name or vice-versa
+        const leagueKey     = `${league.country}:${league.name}`;
         const leagueMatches = newMatches.filter(m => {
-          const mLeague = (m.league || '').toLowerCase();
-          const qLeague = league.name.toLowerCase();
-          return mLeague.includes(qLeague) || qLeague.includes(mLeague);
+          const mL = (m.league || '').toLowerCase();
+          const qL = league.name.toLowerCase();
+          return mL.includes(qL) || qL.includes(mL);
         });
-
         if (leagueMatches.length > 0) {
           const round = leagueMatches[0]?.round || '';
           await pool.query(
             `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
-             VALUES ($1, $2, $3, $4, 'web_search')
+             VALUES ($1,$2,$3,$4,'web_search')
              ON CONFLICT (search_date, league_key) DO UPDATE
                SET matches=$3, round=$4, found_via='web_search', created_at=NOW()`,
             [date, leagueKey, JSON.stringify(leagueMatches), round]
-          ).catch(err => console.warn(`⚠ Cache insert failed for ${leagueKey}:`, err.message));
-          console.log(`💾 Cached: ${leagueKey} (${leagueMatches.length} matches, round: ${round || 'N/A'})`);
+          ).catch(() => {});
         }
       }
     }
