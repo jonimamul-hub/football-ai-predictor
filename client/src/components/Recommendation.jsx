@@ -134,10 +134,6 @@ export default function Recommendation({ type, leagues = [], searchDate, searchT
         <button className={"snb " + (subTab === 'search' ? 'active' : '')} onClick={() => setSubTab('search')}>
           Search Results {searchHits.length > 0 && `(${searchHits.length})`}
         </button>
-        {/* Date/tz chip — always visible so user knows what date will be searched */}
-        <div className="rec-date-chip">
-          📅 {displayDate} · {displayTz}
-        </div>
       </div>
 
       {/* ── TOP tab ──────────────────────────────────────────────────── */}
