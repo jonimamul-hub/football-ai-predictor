@@ -114,7 +114,7 @@ app.use(express.json());
 // ─── Health ───────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
   status: 'OK',
-  v: 11,
+  v: 12,
   anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'
 }));
 
@@ -495,6 +495,16 @@ app.patch('/api/history/:id', async (req, res) => {
       [score, status, req.params.id]
     );
     res.json({ success: true, item: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/history/:id
+app.delete('/api/history/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM history WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

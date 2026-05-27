@@ -46,4 +46,5 @@ export const api = {
   getHistory:    (type)       => req(`/api/history?type=${type}`),
   addHistory:    (data)       => post('/api/history', data),
   updateHistory: (id, data)   => patch(`/api/history/${id}`, data),
+  deleteHistory: (id)         => del(`/api/history/${id}`),
 };
