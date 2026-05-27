@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 
 export default function History({ type }) {
-  const [rows,      setRows]      = useState([])
-  const [filter,    setFilter]    = useState('all')
-  const [checking,  setChecking]  = useState(new Set())
-  const [loading,   setLoading]   = useState(true)
+  const [rows,       setRows]       = useState([])
+  const [filter,     setFilter]     = useState('all')
+  const [checking,   setChecking]   = useState(new Set())
+  const [loading,    setLoading]    = useState(true)
   const [expandedId, setExpandedId] = useState(null)
+  const [editingId,  setEditingId]  = useState(null)
+  const [editScore,  setEditScore]  = useState('')
 
   useEffect(() => { loadHistory() }, [type])
 
@@ -55,6 +57,29 @@ export default function History({ type }) {
 
   const checkAll = () => {
     rows.filter(r => r.status === 'pending').forEach(r => checkResult(r.id))
+  }
+
+  const startEdit = (r) => {
+    setEditingId(r.id)
+    setEditScore(r.score || '')
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditScore('')
+  }
+
+  const saveEdit = async (id, status) => {
+    const score = editScore.trim() || '?-?'
+    try {
+      await api.updateHistory(id, { score, status })
+      setRows(prev => prev.map(r => r.id === id ? { ...r, score, status } : r))
+    } catch (e) {
+      console.error('Save edit failed:', e)
+    } finally {
+      setEditingId(null)
+      setEditScore('')
+    }
   }
 
   const toggleExpand = (id) => {
@@ -130,22 +155,49 @@ export default function History({ type }) {
               <span className={"badge " + (r.verdict === 'YES' || r.verdict === 'DRAW' ? (r.verdict === 'YES' ? 'badge-yes' : 'badge-draw') : 'badge-no')}>
                 {r.verdict}
               </span>
-              {r.status === 'pending' ? (
-                <button
-                  className="ck-btn"
-                  onClick={e => { e.stopPropagation(); checkResult(r.id) }}
-                  disabled={checking.has(r.id)}
-                >
-                  {checking.has(r.id) ? '…' : '↻'}
-                </button>
+              {/* ── Outcome / edit form ────────────────────────── */}
+              {editingId === r.id ? (
+                <div className="hist-edit-form" onClick={e => e.stopPropagation()}>
+                  <input
+                    className="hist-score-input"
+                    value={editScore}
+                    onChange={e => setEditScore(e.target.value)}
+                    placeholder="1-1"
+                    maxLength={7}
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') cancelEdit()
+                    }}
+                  />
+                  <button className="hist-save-btn win"  onClick={() => saveEdit(r.id, 'win')}>✓ Win</button>
+                  <button className="hist-save-btn lose" onClick={() => saveEdit(r.id, 'lose')}>✗ Lose</button>
+                  <button className="hist-cancel-btn"    onClick={cancelEdit}>✕</button>
+                </div>
               ) : (
-                <span className={r.status === 'win' ? 'outcome-win' : 'outcome-lose'}>
-                  {r.score} {r.status === 'win' ? '✓' : '✗'}
-                </span>
-              )}
-              {/* Expand chevron on lose rows */}
-              {isLose && (
-                <span className={"chev " + (isExpanded ? 'open' : '')} style={{ fontSize: '16px', marginLeft: '2px' }}>›</span>
+                <>
+                  {r.status === 'pending' ? (
+                    <button
+                      className="ck-btn"
+                      onClick={e => { e.stopPropagation(); checkResult(r.id) }}
+                      disabled={checking.has(r.id)}
+                    >
+                      {checking.has(r.id) ? '…' : '↻'}
+                    </button>
+                  ) : (
+                    <span className={r.status === 'win' ? 'outcome-win' : 'outcome-lose'}>
+                      {r.score} {r.status === 'win' ? '✓' : '✗'}
+                    </span>
+                  )}
+                  <button
+                    className="edit-btn"
+                    onClick={e => { e.stopPropagation(); startEdit(r) }}
+                    title="Edit score / result"
+                  >✎</button>
+                  {/* Expand chevron on lose rows */}
+                  {isLose && (
+                    <span className={"chev " + (isExpanded ? 'open' : '')} style={{ fontSize: '16px', marginLeft: '2px' }}>›</span>
+                  )}
+                </>
               )}
             </div>
 

@@ -890,3 +890,75 @@
   padding-top: 8px;
   border-top: 1px solid #2a1010;
 }
+
+/* ─────────────────────────────────────────────
+   HISTORY — EDIT BUTTON + INLINE FORM
+───────────────────────────────────────────── */
+.edit-btn {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 1px solid #1c1f2e;
+  border-radius: 4px;
+  color: #4a4d5a;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+  transition: color .15s, border-color .15s;
+}
+.edit-btn:hover { color: #a0a3b0; border-color: #2a2d3a; }
+
+.hist-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.hist-score-input {
+  width: 52px;
+  height: 26px;
+  background: #0d0f18;
+  border: 1px solid #2a2d3a;
+  border-radius: 4px;
+  color: #e8e8e8;
+  font-size: 12px;
+  text-align: center;
+  padding: 0 4px;
+  outline: none;
+}
+.hist-score-input:focus { border-color: #3d405a; }
+
+.hist-save-btn {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hist-save-btn.win  { background: #14532d; color: #4ade80; }
+.hist-save-btn.win:hover  { background: #166534; }
+.hist-save-btn.lose { background: #450a0a; color: #f87171; }
+.hist-save-btn.lose:hover { background: #5c1a1a; }
+
+.hist-cancel-btn {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 1px solid #1c1f2e;
+  border-radius: 4px;
+  color: #4a4d5a;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hist-cancel-btn:hover { color: #a0a3b0; border-color: #2a2d3a; }
