@@ -116,6 +116,8 @@ def _parse_game(g: dict, comps: dict, ctrys: dict) -> dict:
         "competition_id": g.get("competitionId"),
         "season_num":     g.get("seasonNum"),
         "has_stats":      g.get("hasStats", False),
+        "status_group":   g.get("statusGroup", -1),
+        # statusGroup: 1=Not Started, 2=Live, 3=Half-time, 4=Finished, 5=Postponed, 6=Cancelled
     }
 
 
@@ -132,20 +134,29 @@ def health():
 @app.route("/fixtures")
 def fixtures():
     """
-    GET /fixtures?date=YYYY-MM-DD&competition_ids=5455,123
-    Returns all matches for that date, filtered by competition IDs if provided.
+    GET /fixtures?date=YYYY-MM-DD&competition_ids=5455,123&upcoming_only=true
+    Returns matches for that date.
+    - competition_ids: comma-separated league IDs; only these leagues returned.
+    - upcoming_only=true: only return not-started matches (statusGroup == 1).
     """
-    date_str   = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
-    comp_ids_s = request.args.get("competition_ids", "")
-    comp_ids   = {int(x) for x in comp_ids_s.split(",") if x.strip().lstrip("-").isdigit()}
+    date_str      = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
+    comp_ids_s    = request.args.get("competition_ids", "")
+    upcoming_only = request.args.get("upcoming_only", "false").lower() == "true"
+    # Only accept numeric IDs — "ALL" or any non-numeric value is silently ignored
+    comp_ids      = {int(x) for x in comp_ids_s.split(",") if x.strip().lstrip("-").isdigit()}
 
     try:
         games, comps, ctrys = _fetch_day(_to_api_date(date_str))
     except Exception as e:
         return jsonify({"error": str(e), "matches": []}), 500
 
+    # Rule 1 — LEAGUES FILTER: only return user's requested leagues
     if comp_ids:
         games = [g for g in games if g.get("competitionId") in comp_ids]
+
+    # Rule 2 — STATUS FILTER: only upcoming / not-started matches
+    if upcoming_only:
+        games = [g for g in games if g.get("statusGroup") == 1]
 
     return jsonify({
         "matches": [_parse_game(g, comps, ctrys) for g in games],

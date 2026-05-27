@@ -352,17 +352,6 @@ app.post('/api/search', async (req, res) => {
   if (!date || !leagues?.length) return res.status(400).json({ error: 'date and leagues required' });
 
   try {
-    // ── Scraper first (PRIMARY) ───────────────────────────────────────────
-    if (SCRAPER_URL) {
-      const resp = await fetch(`${SCRAPER_URL}/fixtures?date=${date}&competition_ids=ALL`);
-      const data = await resp.json();
-      if (data.matches?.length > 0) {
-        console.log(`📦 Scraper: ${data.matches.length} matches — skipping Claude web search`);
-        return res.json({ matches: data.matches });
-      }
-      console.log(`🔍 Scraper returned 0 matches — falling back to Claude web search`);
-    }
-
     const allMatches      = [];
     const uncachedLeagues = [];
 
@@ -420,10 +409,14 @@ app.post('/api/search', async (req, res) => {
       // ── Scraper fetch (PRIMARY source) ──────────────────────────────────
       if (scraperLeagues.length > 0) {
         const compIds = scraperLeagues.map(l => l.competition_id).join(',');
-        console.log(`⚽ Scraper: fetching date=${date} competition_ids=${compIds}`);
-        const scraperData    = await scraperGet('/fixtures', { date, competition_ids: compIds });
+        console.log(`⚽ Scraper: date=${date} competition_ids=${compIds} upcoming_only=true`);
+        const scraperData    = await scraperGet('/fixtures', {
+          date,
+          competition_ids: compIds,
+          upcoming_only:   'true',          // Rule 3: only not-started matches
+        });
         const scraperMatches = scraperData?.matches || [];
-        console.log(`⚽ Scraper raw: ${scraperMatches.length} total match(es) across all leagues`);
+        console.log(`⚽ Scraper: ${scraperMatches.length} upcoming match(es) for requested leagues`);
 
         let scraperTotal = 0;
         for (const league of scraperLeagues) {
