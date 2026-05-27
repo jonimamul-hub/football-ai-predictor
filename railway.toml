@@ -1,2 +1,9 @@
-# Railway uses package.json scripts: build + start
-# buildCommand and startCommand are set in the Railway service instance settings
+[build]
+builder      = "nixpacks"
+buildCommand = "cd client && npm install && npm run build"
+
+[deploy]
+startCommand        = "node server/index.js"
+healthcheckPath     = "/health"
+healthcheckTimeout  = 30
+restartPolicyType   = "on_failure"

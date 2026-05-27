@@ -23,9 +23,11 @@ export default function Analysis({ type = 'btts', searchDate = '' }) {
 
   // Single date source: from header (YYYY-MM-DD) → display as DD.MM.YYYY
   const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '.')
-  const displayDate = searchDate
-    ? (([y, m, d]) => `${d}.${m}.${y}`)(searchDate.split('-'))
-    : today
+  const displayDate = (() => {
+    if (!searchDate) return today
+    const parts = searchDate.split('-')
+    return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : today
+  })()
 
   const analyze = async () => {
     if (!match.trim()) return
