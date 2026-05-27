@@ -25,6 +25,31 @@ function LbrStatus({ status, signalCount }) {
   return <span className={`lbr-pill ${s.cls}`}>{s.label}</span>
 }
 
+// Convert numeric offset → display string:  4 → "UTC+4",  -3 → "UTC-3",  0 → "UTC+0"
+function tzToStr(offset) {
+  if (offset == null || isNaN(offset)) return 'UTC+4'
+  return offset >= 0 ? `UTC+${offset}` : `UTC${offset}`
+}
+
+// Parse display string → number:  "UTC+4" → 4,  "UTC-3" → -3,  "+5" → 5,  "3" → 3
+// Returns null if the string isn't a valid timezone
+function parseTzStr(str) {
+  const cleaned = str.trim().toUpperCase()
+  // Match "UTC+4", "UTC-3", "UTC+0", "UTC0"
+  const m = cleaned.match(/^UTC([+-]?\d{1,2})$/)
+  if (m) {
+    const n = parseInt(m[1], 10)
+    return n >= -12 && n <= 14 ? n : null
+  }
+  // Also accept bare "+4", "-3", "4"
+  const m2 = cleaned.match(/^([+-]?\d{1,2})$/)
+  if (m2) {
+    const n = parseInt(m2[1], 10)
+    return n >= -12 && n <= 14 ? n : null
+  }
+  return null
+}
+
 export default function LeaguesPanel({
   onLeagueChange,
   searchDate, setSearchDate,
@@ -34,6 +59,12 @@ export default function LeaguesPanel({
   const [newCountry, setNewCountry] = useState('')
   const [newLeagues, setNewLeagues] = useState({})
   const [loading, setLoading] = useState(true)
+
+  // Local string state for the tz text input — lets users type freely mid-edit
+  const [tzInput, setTzInput] = useState(() => tzToStr(searchTz ?? 4))
+
+  // Keep local string in sync if the parent changes searchTz externally
+  useEffect(() => { setTzInput(tzToStr(searchTz ?? 4)) }, [searchTz])
 
   // Load leagues from DB
   useEffect(() => {
@@ -168,16 +199,22 @@ export default function LeaguesPanel({
             onChange={e => setSearchDate(e.target.value)}
             title="Date to search matches"
           />
-          <span className="tz-prefix">UTC</span>
           <input
-            type="number"
+            type="text"
             className="tz-input"
-            value={searchTz}
-            min={-12}
-            max={14}
-            step={1}
-            onChange={e => setSearchTz(Number(e.target.value))}
-            title="Timezone offset (e.g. 4 for UTC+4)"
+            value={tzInput}
+            placeholder="UTC+4"
+            title="Timezone — type UTC+4, UTC-3, UTC+0, etc."
+            onChange={e => {
+              const raw = e.target.value
+              setTzInput(raw)                        // always update local display
+              const n = parseTzStr(raw)
+              if (n !== null) setSearchTz(n)         // propagate up only when valid
+            }}
+            onBlur={() => {
+              // Normalise display on blur (e.g. "+4" → "UTC+4")
+              setTzInput(tzToStr(searchTz ?? 4))
+            }}
           />
         </div>
       </div>

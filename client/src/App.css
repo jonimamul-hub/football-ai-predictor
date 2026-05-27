@@ -808,29 +808,19 @@
 
 .date-input:focus { border-color: #3a4060; }
 
-.tz-prefix {
-  font-size: 11px;
-  color: #6b6f85;
-  white-space: nowrap;
-}
-
 .tz-input {
   background: #1a1d2a;
   border: 1px solid #2a2d3a;
   border-radius: 7px;
   color: #c8cad8;
   font-size: 12px;
-  padding: 4px 6px;
+  padding: 4px 8px;
   font-family: inherit;
   outline: none;
-  width: 48px;
+  width: 72px;
   text-align: center;
-  /* hide number spinners */
-  -moz-appearance: textfield;
+  letter-spacing: 0.02em;
 }
-
-.tz-input::-webkit-outer-spin-button,
-.tz-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .tz-input:focus { border-color: #3a4060; }
 

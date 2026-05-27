@@ -20,10 +20,10 @@ function toApiDate(isoDate) {
   return `${d}.${m}.${y}`
 }
 
-// Format UTC offset for display: 4 → "UTC+4", -3 → "UTC-3", 0 → "UTC"
+// Format UTC offset for display: 4 → "UTC+4", -3 → "UTC-3", 0 → "UTC+0"
 function tzLabel(tz) {
-  if (tz === 0) return 'UTC'
-  return `UTC${tz > 0 ? '+' : ''}${tz}`
+  if (tz == null || isNaN(tz)) return 'UTC+4'
+  return tz >= 0 ? `UTC+${tz}` : `UTC${tz}`
 }
 
 export default function Recommendation({ type, leagues = [], searchDate, searchTz }) {
