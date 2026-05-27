@@ -94,8 +94,8 @@ export default function DataConfig({ type }) {
   return (
     <div className="card">
       <div className="sub-nav">
-        <button className={"snb " + (tab === 'factors'  ? 'active' : '')} onClick={() => setTab('factors')}>📌 Factors</button>
-        <button className={"snb " + (tab === 'stats'    ? 'active' : '')} onClick={() => setTab('stats')}>📊 Statistics</button>
+        <button className={"snb " + (tab === 'factors'  ? 'active' : '')} onClick={() => setTab('factors')}>📌 Factors ({factors.length})</button>
+        <button className={"snb " + (tab === 'stats'    ? 'active' : '')} onClick={() => setTab('stats')}>📊 Statistics ({stats.length})</button>
         <button className={"snb " + (tab === 'patterns' ? 'active' : '')} onClick={() => setTab('patterns')}>🔗 Patterns</button>
       </div>
 
