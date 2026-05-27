@@ -1,7 +1,7 @@
 // AI #2 — Search Skill
 // Finds football matches for a given date + timezone from user's leagues.
-// Strategy: find the round/matchday playing around that date, then return
-// ALL matches in that round (not just those on the exact date).
+// Strategy: for each league, find the active round/matchday and return ALL
+// matches in that round (not just those on the exact date).
 
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -10,21 +10,19 @@ const SYSTEM = `You are a football match schedule finder.
 Your job for each league:
 1. Search for matches scheduled around the requested date (accounting for timezone)
 2. Identify which round/matchday/gameweek those matches belong to
-3. Find ALL matches in that complete round — including matches on adjacent days
-4. Return every match from that full round
+3. Return ALL matches in that complete round — including matches on adjacent days
+4. Include the round label and kick-off times where available
 
 Rules:
-- Search each league individually
-- If a league has multiple matches on the date, they all belong to the same round
-- Include the round label (e.g. "Matchday 12", "Round 5", "GW28") in the output
-- Include kick-off time if found (HH:MM format)
+- Search each league individually for accuracy (1-2 searches per league)
+- After finding the round, list ALL fixtures in it
 - Match name format: "Home Team vs Away Team"
 - Return ONLY a valid JSON array — no explanation, no markdown fences
+- Do NOT exceed 6 total searches
 
 Output format:
 [{"match":"Team A vs Team B","league":"League Name","country":"Country","date":"DD.MM.YYYY","round":"Matchday 12","time":"20:45"}]
 
-If no matches found for a league, skip it.
 If no matches found at all, return: []`;
 
 async function searchMatches(date, leagues, timezone = 0) {
@@ -38,22 +36,20 @@ async function searchMatches(date, leagues, timezone = 0) {
 
   const messages = [{
     role: 'user',
-    content: `Find football matches for:
-- Date: ${date} (timezone: ${tzLabel})
-- Leagues:
+    content: `Find football matches for date: ${date} (${tzLabel})
+
+Leagues to search:
 ${leagueList}
 
-For each league:
-1. Search for which round/matchday is being played on or around ${date}
-2. Return ALL matches in that complete round (the full gameweek/matchday)
-Include match times (local) and round numbers where available.
-Return all matches as a JSON array.`
+For each league: find which round/matchday plays on or around ${date}, then list ALL matches in that full round.
+Do max 6 searches total across all leagues.
+Return results as a JSON array.`
   }];
 
   let lastText = '';
   let iterations = 0;
 
-  while (iterations < 12) {
+  while (iterations < 10) {
     iterations++;
 
     const controller = new AbortController();
@@ -72,6 +68,10 @@ Return all matches as a JSON array.`
         },
         { signal: controller.signal }
       );
+    } catch (err) {
+      // AbortController fired (90s timeout) or network error — return what we have
+      console.warn(`Search iteration ${iterations} aborted/failed:`, err.message);
+      break;
     } finally {
       clearTimeout(timer);
     }
@@ -88,8 +88,8 @@ Return all matches as a JSON array.`
       const result = parseMatches(text, date);
       if (result.length > 0) return result;
 
-      // Got text but no JSON array — ask again
-      if (iterations < 10) {
+      // Got text but no JSON array — ask once more
+      if (iterations < 8) {
         messages.push({
           role:    'user',
           content: 'Output ONLY the JSON array now. Start with [ and end with ]. No markdown.',
@@ -117,6 +117,7 @@ function parseMatches(text, fallbackDate) {
   try {
     // Strip markdown fences
     const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+    // Find the JSON array block
     const m = clean.match(/\[[\s\S]*\]/);
     if (!m) return [];
     const arr = JSON.parse(m[0]);
@@ -127,8 +128,8 @@ function parseMatches(text, fallbackDate) {
         league:  String(x.league  || '').trim(),
         country: String(x.country || '').trim(),
         date:    String(x.date    || fallbackDate).trim(),
-        round:   String(x.round   || x.matchday || x.gameweek || '').trim(),
-        time:    String(x.time    || x.kickoff   || '').trim(),
+        round:   String(x.round   || x.matchday  || x.gameweek || '').trim(),
+        time:    String(x.time    || x.kickoff    || '').trim(),
       }))
       .filter(x => x.match.length > 0);
   } catch {
