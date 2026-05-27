@@ -98,7 +98,7 @@ app.use(express.json());
 // ─── Health ───────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
   status: 'OK',
-  v: 5,
+  v: 6,
   anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'
 }));
 
