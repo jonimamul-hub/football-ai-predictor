@@ -22,12 +22,14 @@ async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS leagues (
       id           SERIAL PRIMARY KEY,
-      country      VARCHAR(100) NOT NULL,
-      name         VARCHAR(100) NOT NULL,
-      emoji        VARCHAR(10)  DEFAULT '🌍',
-      lbr_status   VARCHAR(20)  DEFAULT 'pending',
-      signal_count INTEGER      DEFAULT 0,
-      created_at   TIMESTAMP    DEFAULT NOW(),
+      country          VARCHAR(100) NOT NULL,
+      name             VARCHAR(100) NOT NULL,
+      emoji            VARCHAR(10)  DEFAULT '🌍',
+      lbr_status       VARCHAR(20)  DEFAULT 'pending',
+      signal_count     INTEGER      DEFAULT 0,
+      search_query     TEXT         DEFAULT NULL,
+      found_via_detail TEXT         DEFAULT NULL,
+      created_at       TIMESTAMP    DEFAULT NOW(),
       UNIQUE(country, name)
     );
 
@@ -80,6 +82,8 @@ async function initDB() {
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS note         TEXT         DEFAULT ''`,
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS leagues      TEXT[]       DEFAULT '{}'`,
     `ALTER TABLE search_cache ADD COLUMN IF NOT EXISTS found_via TEXT DEFAULT 'web_search'`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS search_query     TEXT DEFAULT NULL`,
+    `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS found_via_detail TEXT DEFAULT NULL`,
   ];
   for (const sql of colMigrations) {
     await pool.query(sql);
@@ -110,7 +114,7 @@ app.use(express.json());
 // ─── Health ───────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
   status: 'OK',
-  v: 10,
+  v: 11,
   anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'
 }));
 
@@ -174,6 +178,16 @@ async function runLBRForLeague(league) {
     const data = await runLBR(league.country, league.name);
     if (!data) throw new Error('LBR returned null');
 
+    // ── Extract discovery metadata ──────────────────────────────────────────
+    // fixture_query: LBR's recommended search phrase for finding fixtures
+    // _queries:      every web_search query LBR actually used (proof it's searchable)
+    const fixtureQuery    = (data.fixture_query || '').trim();
+    const queriesUsed     = Array.isArray(data._queries) ? data._queries : [];
+    const foundViaDetail  = queriesUsed.slice(0, 5).join(' | ');
+    // Best search hint: prefer LBR's explicit recommendation, fall back to first query used
+    const bestSearchQuery = fixtureQuery || queriesUsed[0] || '';
+    console.log(`🔍 LBR discovery — fixture_query: "${fixtureQuery}" | queries used: ${queriesUsed.length}`);
+
     let count = 0;
 
     // Helper: upsert one signal, keeping the best quality level seen across leagues
@@ -211,10 +225,13 @@ async function runLBRForLeague(league) {
     );
 
     await pool.query(
-      "UPDATE leagues SET lbr_status='done', signal_count=$1 WHERE id=$2",
-      [parseInt(sc[0].c, 10), league.id]
+      `UPDATE leagues
+       SET lbr_status='done', signal_count=$1,
+           search_query=$2, found_via_detail=$3
+       WHERE id=$4`,
+      [parseInt(sc[0].c, 10), bestSearchQuery, foundViaDetail, league.id]
     );
-    console.log(`✅ LBR done for ${league.name} — ${count} signals upserted`);
+    console.log(`✅ LBR done for ${league.name} — ${count} signals upserted | search_query saved: "${bestSearchQuery}"`);
   } catch (err) {
     console.error(`❌ LBR failed for ${league.name}:`, err.message);
     await pool.query(
@@ -308,7 +325,25 @@ app.post('/api/search', async (req, res) => {
     // ── AI search for uncached leagues ─────────────────────────────────────
     if (uncachedLeagues.length > 0) {
       console.log(`🔍 Searching ${uncachedLeagues.length} uncached league(s) via AI`);
-      const newMatches = await searchMatches(date, uncachedLeagues, timezone ?? 0);
+
+      // Load LBR discovery hints (search_query) for any leagues that were already analysed
+      const uncachedNames = uncachedLeagues.map(l => l.name);
+      const { rows: hintRows } = await pool.query(
+        `SELECT name, country, search_query FROM leagues
+         WHERE name = ANY($1::text[]) AND search_query IS NOT NULL AND search_query <> ''`,
+        [uncachedNames]
+      ).catch(() => ({ rows: [] }));
+
+      const uncachedWithHints = uncachedLeagues.map(l => {
+        const hint = hintRows.find(r => r.name === l.name && r.country === l.country);
+        if (hint?.search_query) {
+          console.log(`💡 Hint loaded for ${l.name}: "${hint.search_query}"`);
+          return { ...l, search_query: hint.search_query };
+        }
+        return l;
+      });
+
+      const newMatches = await searchMatches(date, uncachedWithHints, timezone ?? 0);
       allMatches.push(...newMatches);
 
       // ── Cache results per league (store only when matches found) ─────────

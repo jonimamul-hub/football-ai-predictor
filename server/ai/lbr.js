@@ -38,7 +38,8 @@ OUTPUT — when you have enough WHY-focused evidence, output ONLY this JSON (no 
   "draw": {
     "factors": [{"name": "specific WHY factor for draws", "level": "Ideal|Good|Weak|Dormant", "note": "WHY explanation"}],
     "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "WHY this predicts draws"}]
-  }
+  },
+  "fixture_query": "exact search phrase that would reliably find upcoming fixtures/matchday schedule for this league — e.g. 'Kazakhstan Premier League round fixtures 2025' or 'Qazaqstan Premer Ligasy matchday schedule'. Use the league's canonical web name."
 }
 
 Provide 4–7 signals per category. Raw JSON only.`;
@@ -58,8 +59,9 @@ async function runLBR(country, leagueName) {
     `After 4–7 searches (covering both seasons), output the JSON signal object.\n` +
     `Focus on WHY, not just WHAT. Explain the mechanism behind every signal.`;
 
-  const messages = [{ role: 'user', content: userMessage }];
-  let lastText = '';
+  const messages    = [{ role: 'user', content: userMessage }];
+  let lastText      = '';
+  const queriesUsed = [];   // accumulate every web_search query that fires
 
   for (let i = 0; i < 10; i++) {
     const controller = new AbortController();
@@ -92,7 +94,10 @@ async function runLBR(country, leagueName) {
       lastText = text || lastText;
 
       const result = parseLBR(text);
-      if (result) return result;
+      if (result) {
+        result._queries = queriesUsed;
+        return result;
+      }
 
       if (i < 8) {
         messages.push({
@@ -104,9 +109,16 @@ async function runLBR(country, leagueName) {
     }
 
     if (resp.stop_reason === 'tool_use') {
-      const acks = resp.content
-        .filter(b => b.type === 'tool_use')
-        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
+      const toolUseBlocks = resp.content.filter(b => b.type === 'tool_use');
+
+      // Capture every web_search query for discovery metadata
+      for (const b of toolUseBlocks) {
+        if (b.name === 'web_search' && b.input?.query) {
+          queriesUsed.push(b.input.query);
+        }
+      }
+
+      const acks = toolUseBlocks.map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
       if (acks.length) messages.push({ role: 'user', content: acks });
       continue;
     }
@@ -114,7 +126,9 @@ async function runLBR(country, leagueName) {
     break;
   }
 
-  return parseLBR(lastText);
+  const parsed = parseLBR(lastText);
+  if (parsed) parsed._queries = queriesUsed;
+  return parsed;
 }
 
 

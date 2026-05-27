@@ -7,10 +7,11 @@ const Anthropic = require('@anthropic-ai/sdk');
 const SYSTEM = `Your ONLY mission: Find and deliver complete, reliable factual information about requested matches or leagues. You are responsible — if data is not found, SKIP-A is recorded against you. Never stop searching. Use web_search freely across the entire internet. Waterfall: try multiple searches until you find data.
 
 SEARCH STRATEGY:
-1. Search for the active round/matchday playing on or around the requested date
-2. Find ALL matches in that complete round (the full fixture list, not just one day)
-3. If first search returns nothing — try alternative terms, different sites, official league pages
-4. Keep searching with different angles: "[League] fixtures [date]", "[League] matchday [month year]", "[League] round [week]"
+1. If a [LBR-verified query] hint is provided for a league — START with that exact query (adapt it for fixture search on the target date). This query is proven to work for this league.
+2. Search for the active round/matchday playing on or around the requested date
+3. Find ALL matches in that complete round (the full fixture list, not just one day)
+4. If first search returns nothing — try alternative terms, different sites, official league pages
+5. Keep searching with different angles: "[League] fixtures [date]", "[League] matchday [month year]", "[League] round [week]"
 
 RULES:
 - Search each league individually for accuracy
@@ -28,9 +29,15 @@ async function searchMatches(date, leagues, timezone = 0) {
 
   const tzLabel = timezone === 0 ? 'UTC' : `UTC${timezone > 0 ? '+' : ''}${timezone}`;
 
-  const leagueList = leagues
-    .map(l => `  - ${l.country}: ${l.name}`)
-    .join('\n');
+  const leagueList = leagues.map(l => {
+    let line = `  - ${l.country}: ${l.name}`;
+    if (l.search_query) {
+      line += `\n    [LBR-verified query: "${l.search_query}" — start here, adapt for fixtures on target date]`;
+    }
+    return line;
+  }).join('\n');
+
+  const hasHints = leagues.some(l => l.search_query);
 
   const messages = [{
     role: 'user',
@@ -38,7 +45,7 @@ async function searchMatches(date, leagues, timezone = 0) {
 
 Leagues:
 ${leagueList}
-
+${hasHints ? '\nNOTE: Leagues with [LBR-verified query] hints have been successfully researched before — those queries are proven to find data for that league. Use them as your FIRST search attempt, then adapt for fixture/matchday results on the target date.\n' : ''}
 For each league: use your waterfall strategy to find which round/matchday plays around ${date}.
 Return ALL matches in each complete round found.
 Never give up — if one search fails, try another angle.
