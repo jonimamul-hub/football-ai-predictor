@@ -14,15 +14,18 @@ function SignalRow({ signal }) {
   )
 }
 
-export default function Analysis({ type = 'btts' }) {
+export default function Analysis({ type = 'btts', searchDate = '' }) {
   const [match,  setMatch]  = useState('')
-  const [date,   setDate]   = useState('')
   const [league, setLeague] = useState('')
   const [stage,  setStage]  = useState('form')   // form | loading | result | error
   const [result, setResult] = useState(null)
   const [error,  setError]  = useState('')
 
+  // Single date source: from header (YYYY-MM-DD) → display as DD.MM.YYYY
   const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '.')
+  const displayDate = searchDate
+    ? (([y, m, d]) => `${d}.${m}.${y}`)(searchDate.split('-'))
+    : today
 
   const analyze = async () => {
     if (!match.trim()) return
@@ -30,8 +33,8 @@ export default function Analysis({ type = 'btts' }) {
     setError('')
     try {
       const fn   = type === 'draw' ? api.analyzeDraw : api.analyzeBTTS
-      const data = await fn(match.trim(), league.trim(), date.trim() || today)
-      setResult({ ...data, match: match.trim(), league: league.trim(), date: date.trim() || today })
+      const data = await fn(match.trim(), league.trim(), displayDate)
+      setResult({ ...data, match: match.trim(), league: league.trim(), date: displayDate })
       setStage('result')
     } catch (e) {
       setError(e.message)
@@ -39,7 +42,7 @@ export default function Analysis({ type = 'btts' }) {
     }
   }
 
-  const reset = () => { setStage('form'); setResult(null); setMatch(''); setDate(''); setLeague('') }
+  const reset = () => { setStage('form'); setResult(null); setMatch(''); setLeague('') }
 
   const saveToHistory = async () => {
     if (!result) return
@@ -88,16 +91,11 @@ export default function Analysis({ type = 'btts' }) {
               onKeyDown={e => e.key === 'Enter' && analyze()}
             />
           </div>
-          <div className="form-row-2">
-            <div className="form-group">
-              <label className="form-label">Date</label>
-              <input value={date} onChange={e => setDate(e.target.value)} placeholder={today} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">League &amp; Round</label>
-              <input value={league} onChange={e => setLeague(e.target.value)} placeholder="Premier League - Round 38" />
-            </div>
+          <div className="form-group">
+            <label className="form-label">League &amp; Round</label>
+            <input value={league} onChange={e => setLeague(e.target.value)} placeholder="Premier League - Round 38" />
           </div>
+          <div className="ana-date-note">📅 {displayDate} · set in header</div>
           <button className="btn-primary full-width" onClick={analyze}>Analyze ↗</button>
         </div>
       )}

@@ -12,7 +12,7 @@ export default function BTTSTab({ leagues = [], searchDate, searchTz }) {
   return (
     <div>
       <SecNav sections={sections} active={sec} setActive={setSec} />
-      {sec === 'analysis'       && <Analysis      type="btts" />}
+      {sec === 'analysis'       && <Analysis      type="btts" searchDate={searchDate} />}
       {sec === 'recommendation' && <Recommendation type="btts" leagues={leagues} searchDate={searchDate} searchTz={searchTz} />}
       {sec === 'history'        && <History        type="btts" />}
       {sec === 'data config'    && <DataConfig     type="btts" />}

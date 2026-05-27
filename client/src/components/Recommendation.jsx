@@ -47,7 +47,7 @@ export default function Recommendation({ type, leagues = [], searchDate, searchT
       return
     }
     if (!searchDate) {
-      setError('Set a date in the Leagues panel first')
+      setError('Set a date in the header first')
       setStage('error')
       return
     }
@@ -58,13 +58,14 @@ export default function Recommendation({ type, leagues = [], searchDate, searchT
     setRemoved(new Set())
 
     try {
-      // Step 1 — AI #2 Search (pass date as DD.MM.YYYY and timezone offset)
-      const apiDate = toApiDate(searchDate)
-      const { matches } = await api.search(apiDate, leagues, searchTz ?? 4)
+      // Step 1 — AI #2 Search
+      // Send YYYY-MM-DD directly — the scraper's _to_api_date() requires this format.
+      // toApiDate is only used for display (the 📅 chip), never for API calls.
+      const { matches } = await api.search(searchDate, leagues, searchTz ?? 4)
       setSearchHits(matches)
 
       if (!matches.length) {
-        setError(`No matches found for ${apiDate} (${displayTz}). Try again later or check your leagues.`)
+        setError(`No matches found for ${displayDate} (${displayTz}). Try again later or check your leagues.`)
         setStage('error')
         return
       }

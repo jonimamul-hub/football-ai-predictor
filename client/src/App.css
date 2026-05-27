@@ -850,6 +850,17 @@
   align-items: center;
 }
 
+/* Date note in Analysis form — mirrors the header date, read-only */
+.ana-date-note {
+  font-size: 11px;
+  color: #6b6f85;
+  margin-bottom: 14px;
+  padding: 6px 10px;
+  background: #0f1117;
+  border-radius: 6px;
+  border: 1px solid #1c1f2e;
+}
+
 /* Round label in search results */
 .round-chip {
   color: #60a5fa;
