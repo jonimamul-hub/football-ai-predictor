@@ -64,7 +64,7 @@ Return JSON:
 }
 
 // ─── Multi match — select TOP 3 ───────────────────────────────────────────
-async function selectTopBTTS(candidates, signals) {
+async function selectTopBTTS(candidates, signals, recentLosses = []) {
   if (!candidates.length) return [];
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -73,12 +73,21 @@ async function selectTopBTTS(candidates, signals) {
     .map((m, i) => `${i + 1}. ${m.match} | ${m.league} | ${m.date}`)
     .join('\n');
 
+  // Build loss context — recent wrong BTTS picks so the Council learns from mistakes
+  let lossContext = '';
+  if (recentLosses.length > 0) {
+    const lossLines = recentLosses
+      .map(l => `  - ${l.match_name}${l.reasoning ? `: ${l.reasoning.slice(0, 120)}` : ''}`)
+      .join('\n');
+    lossContext = `\n\nCOUNCIL MEMORY — recent INCORRECT BTTS predictions (avoid repeating these mistakes):\n${lossLines}\n\nUse this to calibrate: if a similar context led to a wrong pick before, be more conservative.\n`;
+  }
+
   const prompt = `From the following ${candidates.length} matches, select the TOP 3 BTTS picks
 (those where at least 1 Ideal or 2 Good signals apply). Skip the rest (SKIP-B).
 
 Candidate matches:
 ${list}
-
+${lossContext}
 For each selected match return full analysis. Maximum 3 results.
 
 Return JSON array:

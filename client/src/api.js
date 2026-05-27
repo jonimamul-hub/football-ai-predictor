@@ -32,7 +32,7 @@ export const api = {
   deleteSignal:  (id)         => del(`/api/signals/${id}`),
 
   // ── AI Search ──────────────────────────────────────────────────────────
-  search:        (date, leagues) => post('/api/search', { date, leagues }),
+  search:        (date, leagues, timezone) => post('/api/search', { date, leagues, timezone }),
 
   // ── AI Analysis (single match) ─────────────────────────────────────────
   analyzeBTTS:   (match, league, date) => post('/api/analyze/btts', { match, league, date }),

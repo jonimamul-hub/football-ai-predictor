@@ -13,7 +13,20 @@ function SignalRow({ s }) {
   )
 }
 
-export default function Recommendation({ type, leagues = [] }) {
+// Convert YYYY-MM-DD → DD.MM.YYYY for the API
+function toApiDate(isoDate) {
+  if (!isoDate) return ''
+  const [y, m, d] = isoDate.split('-')
+  return `${d}.${m}.${y}`
+}
+
+// Format UTC offset for display: 4 → "UTC+4", -3 → "UTC-3", 0 → "UTC"
+function tzLabel(tz) {
+  if (tz === 0) return 'UTC'
+  return `UTC${tz > 0 ? '+' : ''}${tz}`
+}
+
+export default function Recommendation({ type, leagues = [], searchDate, searchTz }) {
   const [subTab,    setSubTab]    = useState('top')
   const [stage,     setStage]     = useState('idle')  // idle|searching|analyzing|done|error
   const [searchHits, setSearchHits] = useState([])    // raw search results
@@ -22,12 +35,19 @@ export default function Recommendation({ type, leagues = [] }) {
   const [removed,   setRemoved]   = useState(new Set())
   const [error,     setError]     = useState('')
 
-  const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '.')
+  // ── Derived display values ────────────────────────────────────────────
+  const displayDate = searchDate ? toApiDate(searchDate) : '—'
+  const displayTz   = searchTz  != null ? tzLabel(searchTz) : 'UTC+4'
 
   // ── Get Recommendations flow ──────────────────────────────────────────
   const getRecommendations = async () => {
     if (!leagues.length) {
       setError('Add leagues first in the Leagues section')
+      setStage('error')
+      return
+    }
+    if (!searchDate) {
+      setError('Set a date in the Leagues panel first')
       setStage('error')
       return
     }
@@ -38,12 +58,13 @@ export default function Recommendation({ type, leagues = [] }) {
     setRemoved(new Set())
 
     try {
-      // Step 1 — AI #2 Search
-      const { matches } = await api.search(today, leagues)
+      // Step 1 — AI #2 Search (pass date as DD.MM.YYYY and timezone offset)
+      const apiDate = toApiDate(searchDate)
+      const { matches } = await api.search(apiDate, leagues, searchTz ?? 4)
       setSearchHits(matches)
 
       if (!matches.length) {
-        setError(`No matches found for ${today}. Try again later or check your leagues.`)
+        setError(`No matches found for ${apiDate} (${displayTz}). Try again later or check your leagues.`)
         setStage('error')
         return
       }
@@ -97,7 +118,7 @@ export default function Recommendation({ type, leagues = [] }) {
   // ── Status label ─────────────────────────────────────────────────────
   const statusLabel = {
     idle:      null,
-    searching: '🔍 AI #2 searching matches…',
+    searching: `🔍 AI #2 searching matches for ${displayDate} (${displayTz})…`,
     analyzing: '🧠 AI #1 selecting top picks…',
     error:     null,
     done:      null,
@@ -112,6 +133,10 @@ export default function Recommendation({ type, leagues = [] }) {
         <button className={"snb " + (subTab === 'search' ? 'active' : '')} onClick={() => setSubTab('search')}>
           Search Results {searchHits.length > 0 && `(${searchHits.length})`}
         </button>
+        {/* Date/tz chip — always visible so user knows what date will be searched */}
+        <div className="rec-date-chip">
+          📅 {displayDate} · {displayTz}
+        </div>
       </div>
 
       {/* ── TOP tab ──────────────────────────────────────────────────── */}
@@ -215,7 +240,12 @@ export default function Recommendation({ type, leagues = [] }) {
               <div key={i} className="hist-row">
                 <div className="hist-match">
                   <div className="hist-name">{m.match}</div>
-                  <div className="hist-meta">{m.league} · {m.date}</div>
+                  <div className="hist-meta">
+                    {m.league}
+                    {m.round && <span className="round-chip"> · {m.round}</span>}
+                    {' · '}{m.date}
+                    {m.time && <span className="match-time"> {m.time}</span>}
+                  </div>
                 </div>
               </div>
             ))

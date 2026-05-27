@@ -25,7 +25,11 @@ function LbrStatus({ status, signalCount }) {
   return <span className={`lbr-pill ${s.cls}`}>{s.label}</span>
 }
 
-export default function LeaguesPanel() {
+export default function LeaguesPanel({
+  onLeagueChange,
+  searchDate, setSearchDate,
+  searchTz,   setSearchTz,
+}) {
   const [countries, setCountries] = useState([])
   const [newCountry, setNewCountry] = useState('')
   const [newLeagues, setNewLeagues] = useState({})
@@ -50,10 +54,12 @@ export default function LeaguesPanel() {
   async function loadLeagues() {
     try {
       const { leagues } = await api.getLeagues()
-      // Group by country
+      // Group by country — collapsed by default
       const grouped = {}
       for (const l of leagues) {
-        if (!grouped[l.country]) grouped[l.country] = { name: l.country, emoji: l.emoji, leagues: [], open: true }
+        if (!grouped[l.country]) {
+          grouped[l.country] = { name: l.country, emoji: l.emoji, leagues: [], open: false }
+        }
         grouped[l.country].leagues.push(l)
       }
       setCountries(Object.values(grouped))
@@ -68,6 +74,7 @@ export default function LeaguesPanel() {
     const name = newCountry.trim()
     if (!name) return
     if (countries.find(c => c.name.toLowerCase() === name.toLowerCase())) return
+    // Newly added countries start open so user can immediately add leagues
     setCountries([...countries, { name, emoji: getEmoji(name), leagues: [], open: true }])
     setNewCountry('')
   }
@@ -109,6 +116,7 @@ export default function LeaguesPanel() {
       await api.addLeague({ country: countryName, name: val, emoji: getEmoji(countryName) })
       // Reload to get real ID + lbr_status
       loadLeagues()
+      if (onLeagueChange) onLeagueChange()
     } catch (e) {
       console.error('Add league failed:', e)
       // Rollback
@@ -148,6 +156,33 @@ export default function LeaguesPanel() {
 
   return (
     <div className="leagues-panel">
+
+      {/* ── Date + Timezone controls (top-right) ─────────────────────────── */}
+      <div className="leagues-panel-header">
+        <span className="leagues-panel-title">Leagues</span>
+        <div className="search-date-controls">
+          <input
+            type="date"
+            className="date-input"
+            value={searchDate}
+            onChange={e => setSearchDate(e.target.value)}
+            title="Date to search matches"
+          />
+          <span className="tz-prefix">UTC</span>
+          <input
+            type="number"
+            className="tz-input"
+            value={searchTz}
+            min={-12}
+            max={14}
+            step={1}
+            onChange={e => setSearchTz(Number(e.target.value))}
+            title="Timezone offset (e.g. 4 for UTC+4)"
+          />
+        </div>
+      </div>
+
+      {/* ── Add country ───────────────────────────────────────────────────── */}
       <div className="add-country-row">
         <input
           value={newCountry}

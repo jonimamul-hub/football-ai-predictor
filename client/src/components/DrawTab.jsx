@@ -4,14 +4,14 @@ import Recommendation from './Recommendation'
 import History        from './History'
 import DataConfig     from './DataConfig'
 
-export default function DrawTab({ leagues = [] }) {
+export default function DrawTab({ leagues = [], searchDate, searchTz }) {
   const [sec, setSec] = useState('recommendation')
   const sections = ['recommendation', 'history', 'data config']
 
   return (
     <div>
       <SecNav sections={sections} active={sec} setActive={setSec} />
-      {sec === 'recommendation' && <Recommendation type="draw" leagues={leagues} />}
+      {sec === 'recommendation' && <Recommendation type="draw" leagues={leagues} searchDate={searchDate} searchTz={searchTz} />}
       {sec === 'history'        && <History        type="draw" />}
       {sec === 'data config'    && <DataConfig     type="draw" />}
     </div>

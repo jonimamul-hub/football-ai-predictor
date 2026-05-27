@@ -268,12 +268,12 @@ app.delete('/api/signals/:id', async (req, res) => {
 //  AI — SEARCH
 // ═══════════════════════════════════════════════════════════════════════════
 
-// POST /api/search  body: { date, leagues: [{country, name}] }
+// POST /api/search  body: { date, leagues: [{country, name}], timezone?: number }
 app.post('/api/search', async (req, res) => {
-  const { date, leagues } = req.body;
+  const { date, leagues, timezone } = req.body;
   if (!date || !leagues?.length) return res.status(400).json({ error: 'date and leagues required' });
   try {
-    const matches = await searchMatches(date, leagues);
+    const matches = await searchMatches(date, leagues, timezone ?? 0);
     res.json({ matches });
   } catch (err) {
     console.error('Search error:', err.message);
@@ -322,7 +322,13 @@ app.post('/api/recommend/btts', async (req, res) => {
   if (!matches?.length) return res.status(400).json({ error: 'matches required' });
   try {
     const signals = await getSignals('btts');
-    const top     = await selectTopBTTS(matches, signals);
+    // Fetch recent BTTS losses — included in Council context to learn from mistakes
+    const { rows: recentLosses } = await pool.query(
+      `SELECT match_name, reasoning FROM history
+       WHERE type = 'btts' AND status = 'lose'
+       ORDER BY created_at DESC LIMIT 5`
+    );
+    const top = await selectTopBTTS(matches, signals, recentLosses);
     res.json({ recommendations: top });
   } catch (err) {
     console.error('BTTS recommend error:', err.message);
@@ -336,7 +342,13 @@ app.post('/api/recommend/draw', async (req, res) => {
   if (!matches?.length) return res.status(400).json({ error: 'matches required' });
   try {
     const signals = await getSignals('draw');
-    const top     = await selectTopDraw(matches, signals);
+    // Fetch recent Draw losses — included in Council context to learn from mistakes
+    const { rows: recentLosses } = await pool.query(
+      `SELECT match_name, reasoning FROM history
+       WHERE type = 'draw' AND status = 'lose'
+       ORDER BY created_at DESC LIMIT 5`
+    );
+    const top = await selectTopDraw(matches, signals, recentLosses);
     res.json({ recommendations: top });
   } catch (err) {
     console.error('Draw recommend error:', err.message);

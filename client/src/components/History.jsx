@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 
 export default function History({ type }) {
-  const [rows,     setRows]     = useState([])
-  const [filter,   setFilter]   = useState('all')
-  const [checking, setChecking] = useState(new Set())
-  const [loading,  setLoading]  = useState(true)
+  const [rows,      setRows]      = useState([])
+  const [filter,    setFilter]    = useState('all')
+  const [checking,  setChecking]  = useState(new Set())
+  const [loading,   setLoading]   = useState(true)
+  const [expandedId, setExpandedId] = useState(null)
 
   useEffect(() => { loadHistory() }, [type])
 
@@ -14,14 +15,15 @@ export default function History({ type }) {
     try {
       const { history } = await api.getHistory(type)
       setRows(history.map(r => ({
-        id:      r.id,
-        match:   r.match_name,
-        league:  r.league,
-        date:    r.match_date,
-        verdict: r.verdict,
-        src:     r.source,
-        status:  r.status || 'pending',
-        score:   r.score
+        id:        r.id,
+        match:     r.match_name,
+        league:    r.league,
+        date:      r.match_date,
+        verdict:   r.verdict,
+        src:       r.source,
+        status:    r.status || 'pending',
+        score:     r.score,
+        reasoning: r.reasoning || '',   // ← keep for loss expansion
       })))
     } catch (e) {
       console.error('History load failed:', e)
@@ -53,6 +55,10 @@ export default function History({ type }) {
 
   const checkAll = () => {
     rows.filter(r => r.status === 'pending').forEach(r => checkResult(r.id))
+  }
+
+  const toggleExpand = (id) => {
+    setExpandedId(prev => prev === id ? null : id)
   }
 
   const counts = {
@@ -104,31 +110,61 @@ export default function History({ type }) {
         </div>
       )}
 
-      {filtered.map(r => (
-        <div key={r.id} className="hist-row">
-          <div className="hist-match">
-            <div className="hist-name">{r.match}</div>
-            <div className="hist-meta">{r.league} · {r.date}</div>
-          </div>
-          <span className={"src-badge " + (r.src === 'ANA' ? 'src-ana' : 'src-rec')}>{r.src}</span>
-          <span className={"badge " + (r.verdict === 'YES' || r.verdict === 'DRAW' ? (r.verdict === 'YES' ? 'badge-yes' : 'badge-draw') : 'badge-no')}>
-            {r.verdict}
-          </span>
-          {r.status === 'pending' ? (
-            <button
-              className="ck-btn"
-              onClick={() => checkResult(r.id)}
-              disabled={checking.has(r.id)}
+      {filtered.map(r => {
+        const isLose     = r.status === 'lose'
+        const isExpanded = expandedId === r.id
+
+        return (
+          <div key={r.id} className={`hist-row-wrap${isLose ? ' lose-wrap' : ''}`}>
+            {/* ── Main row ──────────────────────────────────────────── */}
+            <div
+              className={`hist-row${isLose ? ' lose-row' : ''}`}
+              onClick={isLose ? () => toggleExpand(r.id) : undefined}
+              style={isLose ? { cursor: 'pointer' } : {}}
             >
-              {checking.has(r.id) ? '…' : '↻'}
-            </button>
-          ) : (
-            <span className={r.status === 'win' ? 'outcome-win' : 'outcome-lose'}>
-              {r.score} {r.status === 'win' ? '✓' : '✗'}
-            </span>
-          )}
-        </div>
-      ))}
+              <div className="hist-match">
+                <div className="hist-name">{r.match}</div>
+                <div className="hist-meta">{r.league} · {r.date}</div>
+              </div>
+              <span className={"src-badge " + (r.src === 'ANA' ? 'src-ana' : 'src-rec')}>{r.src}</span>
+              <span className={"badge " + (r.verdict === 'YES' || r.verdict === 'DRAW' ? (r.verdict === 'YES' ? 'badge-yes' : 'badge-draw') : 'badge-no')}>
+                {r.verdict}
+              </span>
+              {r.status === 'pending' ? (
+                <button
+                  className="ck-btn"
+                  onClick={e => { e.stopPropagation(); checkResult(r.id) }}
+                  disabled={checking.has(r.id)}
+                >
+                  {checking.has(r.id) ? '…' : '↻'}
+                </button>
+              ) : (
+                <span className={r.status === 'win' ? 'outcome-win' : 'outcome-lose'}>
+                  {r.score} {r.status === 'win' ? '✓' : '✗'}
+                </span>
+              )}
+              {/* Expand chevron on lose rows */}
+              {isLose && (
+                <span className={"chev " + (isExpanded ? 'open' : '')} style={{ fontSize: '16px', marginLeft: '2px' }}>›</span>
+              )}
+            </div>
+
+            {/* ── Expanded reasoning (lose only) ────────────────────── */}
+            {isLose && isExpanded && (
+              <div className="hist-expand">
+                <div className="hist-expand-label">🧠 Original AI Reasoning</div>
+                {r.reasoning
+                  ? <p className="reasoning-text">{r.reasoning}</p>
+                  : <p className="hist-expand-empty">No reasoning stored for this prediction.</p>
+                }
+                <div className="hist-expand-note">
+                  ⚠ This loss is automatically included in future Council discussions.
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

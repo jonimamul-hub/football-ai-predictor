@@ -763,3 +763,144 @@
 
 /* badge-skip */
 .badge-skip { background: #1a1d2a; color: #6b6f85; border: 1px solid #2a2d3a; }
+
+/* ─────────────────────────────────────────────
+   LEAGUES PANEL HEADER (date + tz controls)
+───────────────────────────────────────────── */
+.leagues-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1c1f2e;
+  background: #10131a;
+  gap: 12px;
+}
+
+.leagues-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b6f85;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.search-date-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.date-input {
+  background: #1a1d2a;
+  border: 1px solid #2a2d3a;
+  border-radius: 7px;
+  color: #c8cad8;
+  font-size: 12px;
+  padding: 4px 8px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  width: 130px;
+}
+
+.date-input:focus { border-color: #3a4060; }
+
+.tz-prefix {
+  font-size: 11px;
+  color: #6b6f85;
+  white-space: nowrap;
+}
+
+.tz-input {
+  background: #1a1d2a;
+  border: 1px solid #2a2d3a;
+  border-radius: 7px;
+  color: #c8cad8;
+  font-size: 12px;
+  padding: 4px 6px;
+  font-family: inherit;
+  outline: none;
+  width: 48px;
+  text-align: center;
+  /* hide number spinners */
+  -moz-appearance: textfield;
+}
+
+.tz-input::-webkit-outer-spin-button,
+.tz-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.tz-input:focus { border-color: #3a4060; }
+
+/* Date chip in Recommendation sub-nav */
+.rec-date-chip {
+  margin-left: auto;
+  font-size: 11px;
+  color: #6b6f85;
+  padding: 0 12px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+/* Round label in search results */
+.round-chip {
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+.match-time {
+  color: #8b8fa8;
+}
+
+/* ─────────────────────────────────────────────
+   HISTORY — LOSS EXPANSION
+───────────────────────────────────────────── */
+.hist-row-wrap {
+  border-bottom: 1px solid #1c1f2e;
+}
+
+.hist-row-wrap:last-child { border-bottom: none; }
+
+/* Override hist-row bottom border when inside wrapper */
+.hist-row-wrap .hist-row {
+  border-bottom: none;
+}
+
+/* Lose row gets a subtle left accent */
+.hist-row.lose-row {
+  border-left: 2px solid #5c1a1a;
+  padding-left: 10px;
+}
+
+.hist-expand {
+  background: #100c0c;
+  border-top: 1px solid #2a1010;
+  padding: 12px 14px;
+}
+
+.hist-expand-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #f87171;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+
+.hist-expand-empty {
+  font-size: 12px;
+  color: #4a4d5a;
+  font-style: italic;
+  margin: 0;
+}
+
+.hist-expand-note {
+  font-size: 10px;
+  color: #5c3a3a;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #2a1010;
+}
