@@ -6,24 +6,34 @@ import LeaguesPanel from './components/LeaguesPanel'
 import { api }      from './api'
 import './App.css'
 
-// Compute today's date in a given UTC offset (e.g. +4 for UTC+4)
+// Auto-detect the browser's UTC offset (e.g. UTC+4 → 4, UTC-5 → -5)
+// Handles fractional offsets like UTC+5:30 by rounding to nearest 0.5
+function detectTzOffset() {
+  try {
+    const rawMinutes = -new Date().getTimezoneOffset()   // JS gives offset in reverse sign
+    return rawMinutes / 60                               // exact (e.g. 5.5 for India)
+  } catch {
+    return 4   // fallback UTC+4
+  }
+}
+
+// Get today's date string (YYYY-MM-DD) in the given UTC offset
 function todayInTz(offsetHours) {
-  const now   = new Date()
-  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
+  const now    = new Date()
+  const utcMs  = now.getTime() + now.getTimezoneOffset() * 60000
   const tzDate = new Date(utcMs + offsetHours * 3600000)
-  return tzDate.toISOString().split('T')[0]   // YYYY-MM-DD
+  return tzDate.toISOString().split('T')[0]
 }
 
 export default function App() {
   const [mainTab,     setMainTab]     = useState('btts')
   const [showLeagues, setShowLeagues] = useState(false)
-  const [leagues,     setLeagues]     = useState([])   // flat list for AI Search
+  const [leagues,     setLeagues]     = useState([])
 
-  // ── Global search date + timezone (shared between LeaguesPanel and Recommendation)
-  const [searchDate, setSearchDate] = useState(() => todayInTz(4))   // YYYY-MM-DD
-  const [searchTz,   setSearchTz]   = useState(4)                     // UTC offset number
+  // ── Global search date + timezone — auto-detected from browser on first load
+  const [searchTz,   setSearchTz]   = useState(() => detectTzOffset())
+  const [searchDate, setSearchDate] = useState(() => todayInTz(detectTzOffset()))
 
-  // Load leagues once on mount so Recommendation can search them
   useEffect(() => { loadLeagues() }, [])
 
   async function loadLeagues() {
@@ -42,16 +52,14 @@ export default function App() {
         setMainTab={setMainTab}
         showLeagues={showLeagues}
         setShowLeagues={setShowLeagues}
+        searchDate={searchDate}
+        setSearchDate={setSearchDate}
+        searchTz={searchTz}
+        setSearchTz={setSearchTz}
       />
       <main className="main-content">
         {showLeagues && (
-          <LeaguesPanel
-            onLeagueChange={loadLeagues}
-            searchDate={searchDate}
-            setSearchDate={setSearchDate}
-            searchTz={searchTz}
-            setSearchTz={setSearchTz}
-          />
+          <LeaguesPanel onLeagueChange={loadLeagues} />
         )}
         {!showLeagues && mainTab === 'btts' && (
           <BTTSTab leagues={leagues} searchDate={searchDate} searchTz={searchTz} />

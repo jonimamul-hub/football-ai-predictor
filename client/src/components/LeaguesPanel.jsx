@@ -12,7 +12,6 @@ function getEmoji(country) {
   return COUNTRY_EMOJI[country.toLowerCase()] || '🌍'
 }
 
-// Status pill for LBR
 function LbrStatus({ status, signalCount }) {
   const map = {
     pending: { cls: 'lbr-pending', label: '⏳ LBR pending' },
@@ -25,51 +24,15 @@ function LbrStatus({ status, signalCount }) {
   return <span className={`lbr-pill ${s.cls}`}>{s.label}</span>
 }
 
-// Convert numeric offset → display string:  4 → "UTC+4",  -3 → "UTC-3",  0 → "UTC+0"
-function tzToStr(offset) {
-  if (offset == null || isNaN(offset)) return 'UTC+4'
-  return offset >= 0 ? `UTC+${offset}` : `UTC${offset}`
-}
-
-// Parse display string → number:  "UTC+4" → 4,  "UTC-3" → -3,  "+5" → 5,  "3" → 3
-// Returns null if the string isn't a valid timezone
-function parseTzStr(str) {
-  const cleaned = str.trim().toUpperCase()
-  // Match "UTC+4", "UTC-3", "UTC+0", "UTC0"
-  const m = cleaned.match(/^UTC([+-]?\d{1,2})$/)
-  if (m) {
-    const n = parseInt(m[1], 10)
-    return n >= -12 && n <= 14 ? n : null
-  }
-  // Also accept bare "+4", "-3", "4"
-  const m2 = cleaned.match(/^([+-]?\d{1,2})$/)
-  if (m2) {
-    const n = parseInt(m2[1], 10)
-    return n >= -12 && n <= 14 ? n : null
-  }
-  return null
-}
-
-export default function LeaguesPanel({
-  onLeagueChange,
-  searchDate, setSearchDate,
-  searchTz,   setSearchTz,
-}) {
-  const [countries, setCountries] = useState([])
+// Date/tz controls now live in Topbar — LeaguesPanel only manages league CRUD
+export default function LeaguesPanel({ onLeagueChange }) {
+  const [countries,  setCountries]  = useState([])
   const [newCountry, setNewCountry] = useState('')
   const [newLeagues, setNewLeagues] = useState({})
-  const [loading, setLoading] = useState(true)
+  const [loading,    setLoading]    = useState(true)
 
-  // Local string state for the tz text input — lets users type freely mid-edit
-  const [tzInput, setTzInput] = useState(() => tzToStr(searchTz ?? 4))
-
-  // Keep local string in sync if the parent changes searchTz externally
-  useEffect(() => { setTzInput(tzToStr(searchTz ?? 4)) }, [searchTz])
-
-  // Load leagues from DB
   useEffect(() => {
     loadLeagues()
-    // Poll for LBR status every 5 s while any league is still running/pending
     const iv = setInterval(() => {
       setCountries(c => {
         const needsPoll = c.some(ct =>
@@ -85,7 +48,6 @@ export default function LeaguesPanel({
   async function loadLeagues() {
     try {
       const { leagues } = await api.getLeagues()
-      // Group by country — collapsed by default
       const grouped = {}
       for (const l of leagues) {
         if (!grouped[l.country]) {
@@ -105,7 +67,6 @@ export default function LeaguesPanel({
     const name = newCountry.trim()
     if (!name) return
     if (countries.find(c => c.name.toLowerCase() === name.toLowerCase())) return
-    // Newly added countries start open so user can immediately add leagues
     setCountries([...countries, { name, emoji: getEmoji(name), leagues: [], open: true }])
     setNewCountry('')
   }
@@ -117,9 +78,7 @@ export default function LeaguesPanel({
   const removeCountry = async (countryName) => {
     const country = countries.find(c => c.name === countryName)
     if (!country) return
-    // Optimistic: remove from UI immediately
     setCountries(prev => prev.filter(c => c.name !== countryName))
-    // Delete every league under this country in parallel
     try {
       await Promise.all(country.leagues.map(l => api.deleteLeague(l.id)))
     } catch (e) {
@@ -134,7 +93,6 @@ export default function LeaguesPanel({
     const country = countries.find(c => c.name === countryName)
     if (!country) return
 
-    // Optimistic update
     const tempId = `temp-${Date.now()}`
     setCountries(countries.map(c =>
       c.name === countryName
@@ -145,12 +103,10 @@ export default function LeaguesPanel({
 
     try {
       await api.addLeague({ country: countryName, name: val, emoji: getEmoji(countryName) })
-      // Reload to get real ID + lbr_status
       loadLeagues()
       if (onLeagueChange) onLeagueChange()
     } catch (e) {
       console.error('Add league failed:', e)
-      // Rollback
       setCountries(countries.map(c =>
         c.name === countryName
           ? { ...c, leagues: c.leagues.filter(l => l.id !== tempId) }
@@ -160,7 +116,6 @@ export default function LeaguesPanel({
   }
 
   const removeLeague = async (leagueId, countryName, leagueName) => {
-    // Optimistic
     setCountries(countries.map(c =>
       c.name === countryName
         ? { ...c, leagues: c.leagues.filter(l => l.id !== leagueId && l.name !== leagueName) }
@@ -187,39 +142,6 @@ export default function LeaguesPanel({
 
   return (
     <div className="leagues-panel">
-
-      {/* ── Date + Timezone controls (top-right) ─────────────────────────── */}
-      <div className="leagues-panel-header">
-        <span className="leagues-panel-title">Leagues</span>
-        <div className="search-date-controls">
-          <input
-            type="date"
-            className="date-input"
-            value={searchDate}
-            onChange={e => setSearchDate(e.target.value)}
-            title="Date to search matches"
-          />
-          <input
-            type="text"
-            className="tz-input"
-            value={tzInput}
-            placeholder="UTC+4"
-            title="Timezone — type UTC+4, UTC-3, UTC+0, etc."
-            onChange={e => {
-              const raw = e.target.value
-              setTzInput(raw)                        // always update local display
-              const n = parseTzStr(raw)
-              if (n !== null) setSearchTz(n)         // propagate up only when valid
-            }}
-            onBlur={() => {
-              // Normalise display on blur (e.g. "+4" → "UTC+4")
-              setTzInput(tzToStr(searchTz ?? 4))
-            }}
-          />
-        </div>
-      </div>
-
-      {/* ── Add country ───────────────────────────────────────────────────── */}
       <div className="add-country-row">
         <input
           value={newCountry}
