@@ -55,7 +55,7 @@ Return JSON:
 }`;
 
   const resp = await client.messages.create({
-    model:      'claude-opus-4-5',
+    model:      'claude-sonnet-4-5-20251001',
     max_tokens: 2048,
     system:     buildSystemPrompt(signals),
     messages:   [{ role: 'user', content: prompt }]
@@ -111,7 +111,7 @@ Return JSON array:
 Only YES verdicts in the array.`;
 
   const resp = await client.messages.create({
-    model:      'claude-opus-4-5',
+    model:      'claude-sonnet-4-5-20251001',
     max_tokens: 4096,
     system:     buildSystemPrompt(signals),
     messages:   [{ role: 'user', content: prompt }]
