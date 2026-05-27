@@ -57,6 +57,17 @@ async function initDB() {
       reasoning   TEXT,
       created_at  TIMESTAMP    DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS search_cache (
+      id          SERIAL PRIMARY KEY,
+      search_date VARCHAR(20)  NOT NULL,
+      league_key  VARCHAR(200) NOT NULL,
+      matches     TEXT         NOT NULL,
+      round       VARCHAR(100) DEFAULT '',
+      found_via   TEXT         DEFAULT 'web_search',
+      created_at  TIMESTAMP    DEFAULT NOW(),
+      UNIQUE(search_date, league_key)
+    );
   `);
 
   // Idempotent column additions for existing deployments
@@ -68,6 +79,7 @@ async function initDB() {
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS lbr_error    TEXT         DEFAULT NULL`,
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS note         TEXT         DEFAULT ''`,
     `ALTER TABLE signals ADD COLUMN IF NOT EXISTS leagues      TEXT[]       DEFAULT '{}'`,
+    `ALTER TABLE search_cache ADD COLUMN IF NOT EXISTS found_via TEXT DEFAULT 'web_search'`,
   ];
   for (const sql of colMigrations) {
     await pool.query(sql);
@@ -98,7 +110,7 @@ app.use(express.json());
 // ─── Health ───────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
   status: 'OK',
-  v: 9,
+  v: 10,
   anthropic_key: process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'
 }));
 
@@ -272,9 +284,58 @@ app.delete('/api/signals/:id', async (req, res) => {
 app.post('/api/search', async (req, res) => {
   const { date, leagues, timezone } = req.body;
   if (!date || !leagues?.length) return res.status(400).json({ error: 'date and leagues required' });
+
   try {
-    const matches = await searchMatches(date, leagues, timezone ?? 0);
-    res.json({ matches });
+    const allMatches    = [];
+    const uncachedLeagues = [];
+
+    // ── Per-league cache check ─────────────────────────────────────────────
+    for (const league of leagues) {
+      const leagueKey = `${league.country}:${league.name}`;
+      const { rows } = await pool.query(
+        'SELECT matches FROM search_cache WHERE search_date=$1 AND league_key=$2',
+        [date, leagueKey]
+      );
+      if (rows.length > 0) {
+        const cached = JSON.parse(rows[0].matches);
+        allMatches.push(...cached);
+        console.log(`📦 Cache hit: ${leagueKey} (${cached.length} matches)`);
+      } else {
+        uncachedLeagues.push(league);
+      }
+    }
+
+    // ── AI search for uncached leagues ─────────────────────────────────────
+    if (uncachedLeagues.length > 0) {
+      console.log(`🔍 Searching ${uncachedLeagues.length} uncached league(s) via AI`);
+      const newMatches = await searchMatches(date, uncachedLeagues, timezone ?? 0);
+      allMatches.push(...newMatches);
+
+      // ── Cache results per league (store only when matches found) ─────────
+      for (const league of uncachedLeagues) {
+        const leagueKey = `${league.country}:${league.name}`;
+        // Flexible match: league name contains our name or vice-versa
+        const leagueMatches = newMatches.filter(m => {
+          const mLeague = (m.league || '').toLowerCase();
+          const qLeague = league.name.toLowerCase();
+          return mLeague.includes(qLeague) || qLeague.includes(mLeague);
+        });
+
+        if (leagueMatches.length > 0) {
+          const round = leagueMatches[0]?.round || '';
+          await pool.query(
+            `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
+             VALUES ($1, $2, $3, $4, 'web_search')
+             ON CONFLICT (search_date, league_key) DO UPDATE
+               SET matches=$3, round=$4, found_via='web_search', created_at=NOW()`,
+            [date, leagueKey, JSON.stringify(leagueMatches), round]
+          ).catch(err => console.warn(`⚠ Cache insert failed for ${leagueKey}:`, err.message));
+          console.log(`💾 Cached: ${leagueKey} (${leagueMatches.length} matches, round: ${round || 'N/A'})`);
+        }
+      }
+    }
+
+    res.json({ matches: allMatches });
   } catch (err) {
     console.error('Search error:', err.message);
     res.status(500).json({ error: err.message });

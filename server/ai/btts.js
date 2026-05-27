@@ -1,27 +1,28 @@
-// AI #1 — BTTS Analysis Skill
-// Single match: analyze and return YES / NO / SKIP-B
-// Multi match: select TOP 3 candidates with YES verdict
-// Uses signal quality hierarchy: Ideal > Good > Weak > Dormant (quality over quantity)
+// AI #1 — BTTS Council
+// MISSION: Achieve repeatedly JUSTIFIED predictions for matches where BOTH TEAMS SCORE.
+// Analysis mode: always analyze. Recommendation mode: select TOP 3 by judgment.
+// Signal QUALITY beats quantity: 1 Ideal > 5 Dormant.
 
 const Anthropic = require('@anthropic-ai/sdk');
 
 function buildSystemPrompt(signals) {
-  const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n');
-  const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}`).join('\n');
+  const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n') || '  (none yet)';
+  const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}`).join('\n') || '  (none yet)';
 
-  return `You are a BTTS (Both Teams To Score) football prediction expert.
+  return `Your learning mission: Achieve repeatedly JUSTIFIED predictions — matches where BOTH TEAMS SCORE. Signal QUALITY beats quantity: 1 Ideal signal > 5 Dormant signals. Verdict: YES/NO/SKIP-B (with mandatory reason). In Analysis mode: always analyze. In Recommendation mode: select TOP 3 by your judgment.
 
-SIGNAL QUALITY RULE — quality over quantity:
-  • Ideal signal match  → very strong evidence
-  • Good signal match   → solid evidence
-  • 1 Ideal > 3 Weak. Do NOT recommend if only Weak/Dormant signals match.
+SIGNAL QUALITY (Council-assigned — do not override):
+  [Ideal]   → very strong evidence, heavily weighted in decisions
+  [Good]    → solid evidence, well weighted
+  [Weak]    → minor evidence, use cautiously, never recommend on Weak alone
+  [Dormant] → unreliable or unconfirmed, ignore in recommendations
 
-Verdict thresholds:
-  YES    — 1+ Ideal signal confirmed OR 2+ Good signals confirmed
-  NO     — 1+ Ideal/Good signal clearly against BTTS (clean sheet expected)
-  SKIP-B — conflicting evidence, or only Weak/Dormant signals, or insufficient info
+VERDICT RULES — mandatory reason for every verdict:
+  YES    — 1+ Ideal signal CONFIRMED for this match, OR 2+ Good signals CONFIRMED
+  NO     — 1+ Ideal/Good signal CLEARLY AGAINST BTTS (clean sheet form, defensive setup, low-scoring context)
+  SKIP-B — conflicting evidence | only Weak/Dormant signals match | insufficient specific info
 
-Available signals for these leagues:
+Available signals (WHY factors and WHEN statistics):
 Factors:
 ${factors}
 
@@ -31,39 +32,40 @@ ${stats}
 Return ONLY valid JSON — no markdown, no extra text.`;
 }
 
-// ─── Single match analysis ─────────────────────────────────────────────────
+// ─── Single match analysis (Analysis mode) ─────────────────────────────────
 async function analyzeBTTS(match, league, date, signals) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const prompt = `Analyze BTTS prediction for:
-  Match : ${match}
-  League: ${league}
-  Date  : ${date}
+  const prompt = `[ANALYSIS MODE] Always analyze — never skip.
 
-Apply each available signal to this specific match. Consider team form, motivation context, and recent results you know about.
+Match : ${match}
+League: ${league}
+Date  : ${date}
+
+Apply every available signal to this specific match. Consider both teams' current form, defensive records, tactical setup, and motivation context.
 
 Return JSON:
 {
   "verdict": "YES|NO|SKIP-B",
   "confidence": <0-100>,
   "matched_signals": [
-    { "name": "signal name", "level": "Ideal|Good|Weak|Dormant", "note": "why it applies or doesn't" }
+    { "name": "signal name", "level": "Ideal|Good|Weak|Dormant", "note": "why it applies or contradicts for this match" }
   ],
-  "reasoning": "2-3 sentences focused on the decisive signal(s)"
+  "reasoning": "2-3 sentences explaining the decisive factor(s) and why this verdict"
 }`;
 
   const resp = await client.messages.create({
-    model: 'claude-opus-4-5',
+    model:      'claude-opus-4-5',
     max_tokens: 2048,
-    system: buildSystemPrompt(signals),
-    messages: [{ role: 'user', content: prompt }]
+    system:     buildSystemPrompt(signals),
+    messages:   [{ role: 'user', content: prompt }]
   });
 
   const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return parseSingle(text);
 }
 
-// ─── Multi match — select TOP 3 ───────────────────────────────────────────
+// ─── Multi match — select TOP 3 (Recommendation mode) ─────────────────────
 async function selectTopBTTS(candidates, signals, recentLosses = []) {
   if (!candidates.length) return [];
 
@@ -73,22 +75,23 @@ async function selectTopBTTS(candidates, signals, recentLosses = []) {
     .map((m, i) => `${i + 1}. ${m.match} | ${m.league} | ${m.date}`)
     .join('\n');
 
-  // Build loss context — recent wrong BTTS picks so the Council learns from mistakes
+  // Council Memory — recent losses feed learning
   let lossContext = '';
   if (recentLosses.length > 0) {
     const lossLines = recentLosses
-      .map(l => `  - ${l.match_name}${l.reasoning ? `: ${l.reasoning.slice(0, 120)}` : ''}`)
+      .map(l => `  - ${l.match_name}${l.reasoning ? `: ${l.reasoning.slice(0, 150)}` : ''}`)
       .join('\n');
-    lossContext = `\n\nCOUNCIL MEMORY — recent INCORRECT BTTS predictions (avoid repeating these mistakes):\n${lossLines}\n\nUse this to calibrate: if a similar context led to a wrong pick before, be more conservative.\n`;
+    lossContext = `\n\nCOUNCIL MEMORY — recent INCORRECT BTTS predictions (learn from these):\n${lossLines}\n\nCalibrate: if a similar context failed before, apply higher scrutiny.\n`;
   }
 
-  const prompt = `From the following ${candidates.length} matches, select the TOP 3 BTTS picks
-(those where at least 1 Ideal or 2 Good signals apply). Skip the rest (SKIP-B).
+  const prompt = `[RECOMMENDATION MODE] Select TOP 3 BTTS picks by your judgment.
 
 Candidate matches:
 ${list}
 ${lossContext}
-For each selected match return full analysis. Maximum 3 results.
+For each pick: at least 1 Ideal OR 2+ Good signals must CLEARLY apply.
+Skip everything else with SKIP-B (but still explain why in reasoning).
+Maximum 3 results. If fewer than 3 qualify, return only those that do.
 
 Return JSON array:
 [
@@ -99,19 +102,19 @@ Return JSON array:
     "verdict": "YES",
     "confidence": <0-100>,
     "matched_signals": [
-      { "name": "...", "level": "Ideal|Good|Weak|Dormant", "note": "..." }
+      { "name": "...", "level": "Ideal|Good|Weak|Dormant", "note": "why it applies to this specific match" }
     ],
-    "reasoning": "2-3 sentences"
+    "reasoning": "2-3 sentences — decisive signals and WHY this match qualifies"
   }
 ]
 
-Only include YES verdicts. If fewer than 3 qualify, return only those that do.`;
+Only YES verdicts in the array.`;
 
   const resp = await client.messages.create({
-    model: 'claude-opus-4-5',
+    model:      'claude-opus-4-5',
     max_tokens: 4096,
-    system: buildSystemPrompt(signals),
-    messages: [{ role: 'user', content: prompt }]
+    system:     buildSystemPrompt(signals),
+    messages:   [{ role: 'user', content: prompt }]
   });
 
   const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');

@@ -1,27 +1,28 @@
-// AI #1 — Draw Analysis Skill
-// Multi match: select TOP 2 draw candidates
-// Verdict: DRAW / NO_DRAW / SKIP-B
-// Same quality-over-quantity rule as BTTS
+// AI #1 — Draw Council
+// MISSION: Achieve repeatedly JUSTIFIED predictions for matches ending in a DRAW.
+// Recommendation mode only: select TOP 2 by judgment.
+// Signal QUALITY beats quantity: 1 Ideal > 5 Dormant.
 
 const Anthropic = require('@anthropic-ai/sdk');
 
 function buildSystemPrompt(signals) {
-  const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n');
-  const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}`).join('\n');
+  const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n') || '  (none yet)';
+  const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}`).join('\n') || '  (none yet)';
 
-  return `You are a football Draw prediction expert.
+  return `Your learning mission: Achieve repeatedly JUSTIFIED predictions — matches ending in a DRAW. Signal QUALITY beats quantity. Verdict: DRAW/NO_DRAW/SKIP-B (with mandatory reason). Recommendation mode only: select TOP 2 by your judgment.
 
-SIGNAL QUALITY RULE — quality over quantity:
-  • Ideal signal match  → very strong draw evidence
-  • Good signal match   → solid draw evidence
-  • 1 Ideal > 3 Weak. Do NOT recommend if only Weak/Dormant signals match.
+SIGNAL QUALITY (Council-assigned — do not override):
+  [Ideal]   → very strong draw evidence, heavily weighted
+  [Good]    → solid draw evidence, well weighted
+  [Weak]    → minor evidence, use cautiously, never recommend on Weak alone
+  [Dormant] → unreliable or unconfirmed, ignore in recommendations
 
-Verdict thresholds:
-  DRAW    — 1+ Ideal signal confirmed OR 2+ Good signals confirmed
-  NO_DRAW — strong evidence against draw (clear favourite, high motivation asymmetry)
-  SKIP-B  — conflicting evidence, or only Weak/Dormant signals, or insufficient info
+VERDICT RULES — mandatory reason for every verdict:
+  DRAW    — 1+ Ideal signal CONFIRMED for this match, OR 2+ Good signals CONFIRMED
+  NO_DRAW — strong evidence AGAINST draw: clear favourite, high motivation asymmetry, dominant recent form for one side
+  SKIP-B  — conflicting evidence | only Weak/Dormant signals match | insufficient specific info
 
-Available signals for these leagues:
+Available signals (WHY factors and WHEN statistics):
 Factors:
 ${factors}
 
@@ -31,7 +32,7 @@ ${stats}
 Return ONLY valid JSON — no markdown, no extra text.`;
 }
 
-// ─── Multi match — select TOP 2 ───────────────────────────────────────────
+// ─── Multi match — select TOP 2 (Recommendation mode) ─────────────────────
 async function selectTopDraw(candidates, signals, recentLosses = []) {
   if (!candidates.length) return [];
 
@@ -41,22 +42,22 @@ async function selectTopDraw(candidates, signals, recentLosses = []) {
     .map((m, i) => `${i + 1}. ${m.match} | ${m.league} | ${m.date}`)
     .join('\n');
 
-  // Build loss context — recent wrong Draw picks so the Council learns from mistakes
+  // Council Memory — recent losses feed learning
   let lossContext = '';
   if (recentLosses.length > 0) {
     const lossLines = recentLosses
-      .map(l => `  - ${l.match_name}${l.reasoning ? `: ${l.reasoning.slice(0, 120)}` : ''}`)
+      .map(l => `  - ${l.match_name}${l.reasoning ? `: ${l.reasoning.slice(0, 150)}` : ''}`)
       .join('\n');
-    lossContext = `\n\nCOUNCIL MEMORY — recent INCORRECT Draw predictions (avoid repeating these mistakes):\n${lossLines}\n\nUse this to calibrate: if a similar context led to a wrong pick before, be more conservative.\n`;
+    lossContext = `\n\nCOUNCIL MEMORY — recent INCORRECT Draw predictions (learn from these):\n${lossLines}\n\nCalibrate: if a similar context failed before, apply higher scrutiny.\n`;
   }
 
-  const prompt = `From the following ${candidates.length} matches, select the TOP 2 DRAW picks
-(those where at least 1 Ideal or 2 Good draw signals apply). Skip the rest (SKIP-B).
+  const prompt = `[RECOMMENDATION MODE] Select TOP 2 DRAW picks by your judgment.
 
 Candidate matches:
 ${list}
 ${lossContext}
-For each selected match return full analysis. Maximum 2 results.
+For each pick: at least 1 Ideal OR 2+ Good draw signals must CLEARLY apply.
+Maximum 2 results. If fewer qualify, return only those that do.
 
 Return JSON array:
 [
@@ -67,19 +68,19 @@ Return JSON array:
     "verdict": "DRAW",
     "confidence": <0-100>,
     "matched_signals": [
-      { "name": "...", "level": "Ideal|Good|Weak|Dormant", "note": "..." }
+      { "name": "...", "level": "Ideal|Good|Weak|Dormant", "note": "why it applies to this specific match" }
     ],
-    "reasoning": "2-3 sentences"
+    "reasoning": "2-3 sentences — decisive signals and WHY this match is a draw candidate"
   }
 ]
 
-Only include DRAW verdicts. If fewer than 2 qualify, return only those that do.`;
+Only DRAW verdicts in the array.`;
 
   const resp = await client.messages.create({
-    model: 'claude-opus-4-5',
+    model:      'claude-opus-4-5',
     max_tokens: 4096,
-    system: buildSystemPrompt(signals),
-    messages: [{ role: 'user', content: prompt }]
+    system:     buildSystemPrompt(signals),
+    messages:   [{ role: 'user', content: prompt }]
   });
 
   const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');

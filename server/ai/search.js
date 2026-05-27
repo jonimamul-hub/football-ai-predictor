@@ -1,29 +1,27 @@
-// AI #2 — Search Skill
-// Finds football matches for a given date + timezone from user's leagues.
-// Strategy: for each league, find the active round/matchday and return ALL
-// matches in that round (not just those on the exact date).
+// AI #2 — Search Agent
+// MISSION: Find and deliver complete, reliable factual information about requested matches.
+// If data is not found, SKIP-A is recorded. Never stop searching. Waterfall strategy.
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const SYSTEM = `You are a football match schedule finder.
+const SYSTEM = `Your ONLY mission: Find and deliver complete, reliable factual information about requested matches or leagues. You are responsible — if data is not found, SKIP-A is recorded against you. Never stop searching. Use web_search freely across the entire internet. Waterfall: try multiple searches until you find data.
 
-Your job for each league:
-1. Search for matches scheduled around the requested date (accounting for timezone)
-2. Identify which round/matchday/gameweek those matches belong to
-3. Return ALL matches in that complete round — including matches on adjacent days
-4. Include the round label and kick-off times where available
+SEARCH STRATEGY:
+1. Search for the active round/matchday playing on or around the requested date
+2. Find ALL matches in that complete round (the full fixture list, not just one day)
+3. If first search returns nothing — try alternative terms, different sites, official league pages
+4. Keep searching with different angles: "[League] fixtures [date]", "[League] matchday [month year]", "[League] round [week]"
 
-Rules:
-- Search each league individually for accuracy (1-2 searches per league)
-- After finding the round, list ALL fixtures in it
-- Match name format: "Home Team vs Away Team"
-- Return ONLY a valid JSON array — no explanation, no markdown fences
-- Do NOT exceed 6 total searches
+RULES:
+- Search each league individually for accuracy
+- Include round/matchday label, kick-off times, and exact team names
+- Match format: "Home Team vs Away Team"
+- Return ONLY a valid JSON array — no prose, no markdown fences
 
-Output format:
+OUTPUT FORMAT:
 [{"match":"Team A vs Team B","league":"League Name","country":"Country","date":"DD.MM.YYYY","round":"Matchday 12","time":"20:45"}]
 
-If no matches found at all, return: []`;
+If absolutely nothing found after exhaustive search across multiple attempts: []`;
 
 async function searchMatches(date, leagues, timezone = 0) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -38,18 +36,19 @@ async function searchMatches(date, leagues, timezone = 0) {
     role: 'user',
     content: `Find football matches for date: ${date} (${tzLabel})
 
-Leagues to search:
+Leagues:
 ${leagueList}
 
-For each league: find which round/matchday plays on or around ${date}, then list ALL matches in that full round.
-Do max 6 searches total across all leagues.
-Return results as a JSON array.`
+For each league: use your waterfall strategy to find which round/matchday plays around ${date}.
+Return ALL matches in each complete round found.
+Never give up — if one search fails, try another angle.
+Return all results as a single JSON array.`
   }];
 
   let lastText = '';
   let iterations = 0;
 
-  while (iterations < 10) {
+  while (iterations < 12) {
     iterations++;
 
     const controller = new AbortController();
@@ -69,7 +68,6 @@ Return results as a JSON array.`
         { signal: controller.signal }
       );
     } catch (err) {
-      // AbortController fired (90s timeout) or network error — return what we have
       console.warn(`Search iteration ${iterations} aborted/failed:`, err.message);
       break;
     } finally {
@@ -88,11 +86,10 @@ Return results as a JSON array.`
       const result = parseMatches(text, date);
       if (result.length > 0) return result;
 
-      // Got text but no JSON array — ask once more
-      if (iterations < 8) {
+      if (iterations < 10) {
         messages.push({
           role:    'user',
-          content: 'Output ONLY the JSON array now. Start with [ and end with ]. No markdown.',
+          content: 'Output ONLY the JSON array now. Start with [ and end with ]. No markdown. If truly nothing found, return [].',
         });
       }
       continue;
@@ -115,9 +112,7 @@ Return results as a JSON array.`
 function parseMatches(text, fallbackDate) {
   if (!text) return [];
   try {
-    // Strip markdown fences
     const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
-    // Find the JSON array block
     const m = clean.match(/\[[\s\S]*\]/);
     if (!m) return [];
     const arr = JSON.parse(m[0]);

@@ -1,42 +1,47 @@
 // AI — LBR (League-Based Research)
-// Searches the web freely for real league data, then outputs BTTS + Draw signals as JSON.
-// Target: complete in < 2 minutes.  Uses claude-sonnet-4-5 (faster than opus for this task).
+// MISSION: Find PRIMARY reasons WHY results happen — not just statistics, but WHY.
+// Analyzes current AND previous season. Generates Factors + Statistics signals.
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-// ─── Focused system prompt ─────────────────────────────────────────────────
-// Kept deliberately short so Claude spends tokens on research, not prompt parsing.
-const SYSTEM = `You are a football analyst. Research a league using web search, then output prediction signals as JSON.
-
-SEARCH STRATEGY — be efficient:
-• Do 3–5 targeted searches (BTTS rate, draw rate, goals per game, tactical style)
-• Do NOT search the same topic twice
-• After gathering data, output JSON immediately — do not narrate findings
+const SYSTEM = `Your learning mission: Find PRIMARY (inclusive) reasons why results happen — not just statistics, but WHY. Analyze current AND previous season. Generate signals classified as Factors (motivation, tactics, context) or Statistics (numbers, history, form). Never just report numbers — always explain WHY.
 
 SIGNAL TYPES:
-• Factors — qualitative WHY reasons (e.g. "High press + high defensive line → gaps for both teams")
-• Stats   — measurable thresholds (e.g. "BTTS ≥ 68% when both sides are top-6")
+• Factors — qualitative WHY reasons (motivation, tactics, team dynamics, context)
+  Example: "High press + high defensive line creates transition spaces → both teams score in open exchanges"
+• Statistics — measurable thresholds explained by WHY
+  Example: "BTTS ≥ 68% when both sides top-6 — because both play expansive football and neither parks the bus"
 
-SIGNAL QUALITY:
-• Ideal   — >70% hit rate, confirmed across multiple seasons
-• Good    — 55-70%, solid pattern
-• Weak    — 40-55%, emerging
-• Dormant — <40% or insufficient data
+SIGNAL QUALITY — assign based on strength of evidence:
+• Ideal   — pattern confirmed 2+ seasons, >70% hit rate, clear WHY mechanism
+• Good    — solid pattern 55–70%, consistent evidence, understood WHY
+• Weak    — emerging 40–55%, limited data, WHY hypothesis plausible
+• Dormant — <40% hit rate or insufficient data to establish WHY
 
-CRITICAL OUTPUT RULE — when you have enough data, output ONLY this JSON and nothing else:
+CRITICAL RULE — Never just report numbers, always explain WHY:
+  BAD:  "Napoli average 2.1 goals per game"
+  GOOD: "Napoli's high defensive line and aggressive press force opponents into rushed clearances, creating second-ball situations that generate 3–4 high-quality chances per game for both sides"
+
+SEARCH STRATEGY:
+• Do 4–7 targeted searches: tactical analysis, recent form, H2H history, league statistics
+• Cover BOTH current season (2024/25) AND previous season (2023/24)
+• Dig into: title race dynamics, relegation battles, European qualification pressure
+• Never search the same topic twice
+
+OUTPUT — when you have enough WHY-focused evidence, output ONLY this JSON (no prose, no markdown):
 
 {
   "btts": {
-    "factors": [{"name": "specific WHY factor", "level": "Ideal|Good|Weak|Dormant", "note": "evidence from real data"}],
-    "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "evidence"}]
+    "factors": [{"name": "specific WHY factor", "level": "Ideal|Good|Weak|Dormant", "note": "WHY explanation with real evidence"}],
+    "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "WHY this stat predicts BTTS"}]
   },
   "draw": {
-    "factors": [{"name": "specific WHY factor for draws", "level": "Ideal|Good|Weak|Dormant", "note": "evidence"}],
-    "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "evidence"}]
+    "factors": [{"name": "specific WHY factor for draws", "level": "Ideal|Good|Weak|Dormant", "note": "WHY explanation"}],
+    "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "WHY this predicts draws"}]
   }
 }
 
-Provide 4–7 signals per category. Output raw JSON only — no markdown, no prose.`;
+Provide 4–7 signals per category. Raw JSON only.`;
 
 
 // ─── Main entry point ──────────────────────────────────────────────────────
@@ -47,17 +52,16 @@ async function runLBR(country, leagueName) {
   const client = new Anthropic({ apiKey });
 
   const userMessage =
-    `Research "${leagueName}" (${country}) — 2024/25 and 2023/24 seasons.\n\n` +
-    `Use web search to find real statistics and patterns. Search freely — no restricted sources.\n\n` +
-    `After 3–5 searches output the JSON signal object. Do not exceed 5 searches.`;
+    `Research "${leagueName}" (${country}) — current season (2024/25) AND previous season (2023/24).\n\n` +
+    `Use web search to find WHY patterns exist — tactical, motivational, contextual.\n` +
+    `Search freely across the entire internet. No restricted sources.\n\n` +
+    `After 4–7 searches (covering both seasons), output the JSON signal object.\n` +
+    `Focus on WHY, not just WHAT. Explain the mechanism behind every signal.`;
 
   const messages = [{ role: 'user', content: userMessage }];
   let lastText = '';
 
-  // Hard cap: 10 iterations.  Each web-search round-trip is ~20-40 s,
-  // so worst case is 10 × 40 s = ~6 min.  Typically finishes in 3–4 iterations.
   for (let i = 0; i < 10; i++) {
-    // Per-call timeout: 90 seconds.  Prevents a single stuck API call from hanging forever.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 90_000);
 
@@ -78,7 +82,6 @@ async function runLBR(country, leagueName) {
       clearTimeout(timer);
     }
 
-    // Accumulate assistant turn
     messages.push({ role: 'assistant', content: resp.content });
 
     if (resp.stop_reason === 'end_turn') {
@@ -91,7 +94,6 @@ async function runLBR(country, leagueName) {
       const result = parseLBR(text);
       if (result) return result;
 
-      // Got prose but no JSON — ask once more for JSON output
       if (i < 8) {
         messages.push({
           role:    'user',
@@ -102,34 +104,25 @@ async function runLBR(country, leagueName) {
     }
 
     if (resp.stop_reason === 'tool_use') {
-      // web_search_20250305: Anthropic runs the search server-side.
-      // We acknowledge every tool_use block with an empty result to keep the loop going.
       const acks = resp.content
         .filter(b => b.type === 'tool_use')
         .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
-      if (acks.length) {
-        messages.push({ role: 'user', content: acks });
-      }
+      if (acks.length) messages.push({ role: 'user', content: acks });
       continue;
     }
 
-    // Unexpected stop reason
     break;
   }
 
-  // Last-ditch: try to parse whatever text Claude last produced
   return parseLBR(lastText);
 }
 
 
 // ─── Robust JSON extraction ────────────────────────────────────────────────
-// Depth-tracks to find ALL balanced {...} blocks in the text, then tries them
-// largest-first.  Avoids the greedy-regex bug that matched from first { to last }
-// and broke whenever Claude wrote prose containing braces before the JSON block.
+// Depth-tracks to find ALL balanced {...} blocks, tries largest-first.
 function parseLBR(text) {
   if (!text) return null;
 
-  // Strip markdown fences if present
   text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
 
   const candidates = [];
@@ -149,7 +142,6 @@ function parseLBR(text) {
     }
   }
 
-  // Largest candidates first — the full signal object is the biggest block
   candidates.sort((a, b) => b.length - a.length);
 
   for (const raw of candidates) {
