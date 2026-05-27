@@ -698,9 +698,17 @@ app.use((req, res) => {
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────
-initDB().then(() => {
-  app.listen(PORT, () => console.log(`✅ Server on port ${PORT}`));
-}).catch(err => {
-  console.error('DB init failed:', err.message);
-  process.exit(1);
+// Start listening FIRST so Railway's HTTP health check (/health) passes
+// immediately. DB init runs in the background — if it fails, routes that
+// need the DB will return 500s, but the server itself stays up.
+console.log(`🚀 Starting server on port ${PORT}…`);
+app.listen(PORT, () => {
+  console.log(`✅ Server listening on port ${PORT}`);
+  initDB()
+    .then(() => console.log('✅ DB ready'))
+    .catch(err => {
+      console.error('❌ DB init failed:', err.message);
+      // Don't exit — keep the server up so health check keeps passing.
+      // Routes that need the DB will return 500s until a restart fixes it.
+    });
 });
