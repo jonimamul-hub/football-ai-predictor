@@ -71,7 +71,7 @@ async function runLBR(country, leagueName) {
     try {
       resp = await client.beta.messages.create(
         {
-          model:      'claude-sonnet-4-5',
+          model:      'claude-haiku-4-5-20251001',
           max_tokens: 4096,
           system:     SYSTEM,
           tools:      [{ type: 'web_search_20250305', name: 'web_search' }],
