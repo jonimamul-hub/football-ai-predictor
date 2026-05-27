@@ -352,6 +352,17 @@ app.post('/api/search', async (req, res) => {
   if (!date || !leagues?.length) return res.status(400).json({ error: 'date and leagues required' });
 
   try {
+    // ── Scraper first (PRIMARY) ───────────────────────────────────────────
+    if (SCRAPER_URL) {
+      const resp = await fetch(`${SCRAPER_URL}/fixtures?date=${date}&competition_ids=ALL`);
+      const data = await resp.json();
+      if (data.matches?.length > 0) {
+        console.log(`📦 Scraper: ${data.matches.length} matches — skipping Claude web search`);
+        return res.json({ matches: data.matches });
+      }
+      console.log(`🔍 Scraper returned 0 matches — falling back to Claude web search`);
+    }
+
     const allMatches      = [];
     const uncachedLeagues = [];
 
