@@ -1185,8 +1185,8 @@
   overflow: hidden;
 }
 
-/* Status bar */
-.aia-statusbar {
+/* Mode selector bar */
+.aia-modebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1194,50 +1194,31 @@
   background: #12151e;
   border-bottom: 1px solid #1c1f2e;
   flex-shrink: 0;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
-.aia-agent-status {
+.aia-mode-btns {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
 }
-.aia-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.aia-agent-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #8890a0;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-.aia-agent-val { font-size: 12px; color: #c8cad6; }
-.aia-model-sel {
+.aia-mode-btn {
   background: #1c1f2e;
   border: 1px solid #2a2d3a;
-  border-radius: 4px;
-  color: #c8cad6;
-  font-size: 11px;
-  padding: 2px 6px;
+  border-radius: 6px;
+  color: #8890a0;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
   cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
 }
-.aia-refresh-btn {
-  background: transparent;
-  border: none;
-  color: #6068a0;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 2px 4px;
-  line-height: 1;
+.aia-mode-btn:hover { color: #c8cad6; border-color: #3a3d4a; }
+.aia-mode-btn.active {
+  background: #1c2450;
+  border-color: #3a4470;
+  color: #90b0f0;
+  font-weight: 600;
 }
-.aia-refresh-btn:hover { color: #a0a8d0; }
-.aia-statusbar-right { display: flex; gap: 6px; align-items: center; }
-.aia-kb-btn, .aia-crit-btn {
+.aia-crit-btn {
   background: #1c1f2e;
   border: 1px solid #2a2d3a;
   border-radius: 4px;
@@ -1246,25 +1227,7 @@
   padding: 4px 10px;
   cursor: pointer;
 }
-.aia-kb-btn:hover, .aia-crit-btn:hover { color: #c8cad6; border-color: #3a3d4a; }
-
-/* Setup warning */
-.aia-setup-note {
-  background: #1a1408;
-  border-bottom: 1px solid #3a2800;
-  color: #f5a623;
-  font-size: 11px;
-  padding: 8px 14px;
-  flex-shrink: 0;
-  line-height: 1.5;
-}
-.aia-setup-note code {
-  background: #2a2000;
-  border-radius: 3px;
-  padding: 1px 5px;
-  font-family: monospace;
-  font-size: 10px;
-}
+.aia-crit-btn:hover { color: #c8cad6; border-color: #3a3d4a; }
 
 /* Criteria panel */
 .aia-criteria-panel {
@@ -1294,86 +1257,6 @@
   box-sizing: border-box;
 }
 .aia-criteria-input:focus { outline: none; border-color: #4a4f80; }
-
-/* Knowledge panel */
-.aia-kb-panel {
-  background: #0d1018;
-  border-bottom: 1px solid #1c1f2e;
-  max-height: 210px;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-.aia-kb-empty {
-  padding: 14px;
-  font-size: 12px;
-  color: #5a5d6a;
-  text-align: center;
-}
-.aia-kb-item {
-  padding: 8px 14px;
-  border-bottom: 1px solid #14171f;
-}
-.aia-kb-item.aia-kb-approved {
-  background: #0a160c;
-  border-left: 2px solid #22c55e;
-}
-.aia-kb-topic {
-  font-size: 10px;
-  font-weight: 600;
-  color: #5880a0;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  margin-bottom: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.aia-kb-content {
-  font-size: 12px;
-  color: #9098b8;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.aia-kb-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 5px;
-}
-.aia-kb-source {
-  font-size: 10px;
-  color: #4a4d5a;
-  text-transform: uppercase;
-}
-.aia-kb-approve {
-  background: transparent;
-  border: 1px solid #1e3020;
-  border-radius: 4px;
-  color: #4a7a4a;
-  font-size: 10px;
-  padding: 2px 8px;
-  cursor: pointer;
-}
-.aia-kb-approve.approved {
-  background: #0a1e0e;
-  border-color: #22c55e;
-  color: #22c55e;
-}
-.aia-kb-approve:hover { border-color: #22c55e; color: #22c55e; }
-.aia-kb-del {
-  background: transparent;
-  border: none;
-  color: #4a4d5a;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  margin-left: auto;
-}
-.aia-kb-del:hover { color: #f87171; }
 
 /* Messages */
 .aia-messages {

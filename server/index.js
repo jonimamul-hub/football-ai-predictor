@@ -985,12 +985,12 @@ app.delete('/api/ollama/knowledge/:id', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  AI ASSISTANT  (Claude conversational endpoint — Ollama fallback)
+//  AI ASSISTANT  (Claude — LBR mode or Analysis mode)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// POST /api/assistant  body: { messages: [{role,content}], context? }
+// POST /api/assistant  body: { messages: [{role,content}], context?, mode? }
 app.post('/api/assistant', async (req, res) => {
-  const { messages, context } = req.body;
+  const { messages, context, mode } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
   try {
     const signals = await getSignals('btts')
@@ -1003,6 +1003,7 @@ app.post('/api/assistant', async (req, res) => {
     const reply = await runAssistant(messages, {
       context: context || '',
       signals: [...signals, ...drawSigs],
+      mode:    mode || 'analysis',
     });
     res.json({ reply });
   } catch (err) {

@@ -55,7 +55,7 @@ export const api = {
   deleteKnowledge: (id)            => del(`/api/ollama/knowledge/${id}`),
 
   // ── AI Assistant ───────────────────────────────────────────────────────
-  askAssistant:    (messages, ctx) => post('/api/assistant', { messages, context: ctx || '' }),
+  askAssistant:    (messages, ctx, mode) => post('/api/assistant', { messages, context: ctx || '', mode: mode || 'analysis' }),
 
   // ── History ────────────────────────────────────────────────────────────
   getHistory:    (type)       => req(`/api/history?type=${type}`),
