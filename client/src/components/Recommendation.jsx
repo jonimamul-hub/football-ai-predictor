@@ -1,29 +1,12 @@
 import { useState } from 'react'
 import { api } from '../api'
+import { badgeClass, tzLabel, SignalRow } from '../utils'
 
-const LEVEL_CLASS = { Ideal: 'ideal', Good: 'good', Weak: 'weak', Dormant: 'dormant' }
-
-function SignalRow({ s }) {
-  return (
-    <div className="signal-row">
-      <span className={`sig ${LEVEL_CLASS[s.level] || 'dormant'}`}>{s.level}</span>
-      <span>{s.name}</span>
-      {s.note && <span className="sig-note"> — {s.note}</span>}
-    </div>
-  )
-}
-
-// Convert YYYY-MM-DD → DD.MM.YYYY for the API
+// Convert YYYY-MM-DD → DD.MM.YYYY for display
 function toApiDate(isoDate) {
   if (!isoDate) return ''
   const [y, m, d] = isoDate.split('-')
   return `${d}.${m}.${y}`
-}
-
-// Format UTC offset for display: 4 → "UTC+4", -3 → "UTC-3", 0 → "UTC+0"
-function tzLabel(tz) {
-  if (tz == null || isNaN(tz)) return 'UTC+4'
-  return tz >= 0 ? `UTC+${tz}` : `UTC${tz}`
 }
 
 export default function Recommendation({ type, leagues = [], searchDate, searchTz }) {
@@ -106,12 +89,6 @@ export default function Recommendation({ type, leagues = [], searchDate, searchT
       console.error('History save failed:', e)
     }
     setRemoved(prev => new Set([...prev, rec.match]))
-  }
-
-  const badgeClass = (v) => {
-    if (v === 'YES')  return 'badge-yes'
-    if (v === 'DRAW') return 'badge-draw'
-    return 'badge-no'
   }
 
   const visible = recs.filter(r => !removed.has(r.match))
@@ -198,7 +175,7 @@ export default function Recommendation({ type, leagues = [], searchDate, searchT
                       {(rec.matched_signals || []).length > 0 && (
                         <>
                           <div className="detail-label">📌 Signals</div>
-                          {rec.matched_signals.map((s, j) => <SignalRow key={j} s={s} />)}
+                          {rec.matched_signals.map((s, j) => <SignalRow key={j} signal={s} />)}
                         </>
                       )}
                       {rec.reasoning && (

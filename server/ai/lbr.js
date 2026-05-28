@@ -80,6 +80,9 @@ async function runLBR(country, leagueName) {
         },
         { signal: controller.signal }
       );
+    } catch (err) {
+      console.warn(`LBR iteration ${i + 1} aborted/failed:`, err.message);
+      break;
     } finally {
       clearTimeout(timer);
     }

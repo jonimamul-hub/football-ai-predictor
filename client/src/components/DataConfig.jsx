@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
-
-const LEVEL_CLASS = {
-  Ideal: 'ideal', Good: 'good', Weak: 'weak', Dormant: 'dormant',
-}
+import { LEVEL_CLASS } from '../utils'
 
 export default function DataConfig({ type }) {
   const [tab,       setTab]       = useState('factors')

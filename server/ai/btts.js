@@ -4,6 +4,7 @@
 // Signal QUALITY beats quantity: 1 Ideal > 5 Dormant.
 
 const Anthropic = require('@anthropic-ai/sdk');
+const { parseSingle, parseArray } = require('./utils');
 
 function buildSystemPrompt(signals) {
   const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n') || '  (none yet)';
@@ -119,23 +120,6 @@ Only YES verdicts in the array.`;
 
   const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return parseArray(text);
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────
-function parseSingle(text) {
-  try {
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-  } catch { /* fall through */ }
-  return { verdict: 'SKIP-B', confidence: 0, matched_signals: [], reasoning: 'Analysis failed — could not parse response.' };
-}
-
-function parseArray(text) {
-  try {
-    const m = text.match(/\[[\s\S]*\]/);
-    if (m) return JSON.parse(m[0]);
-  } catch { /* fall through */ }
-  return [];
 }
 
 module.exports = { analyzeBTTS, selectTopBTTS };

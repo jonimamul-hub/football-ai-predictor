@@ -1,18 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api'
-
-const LEVEL_CLASS = { Ideal: 'ideal', Good: 'good', Weak: 'weak', Dormant: 'dormant' }
-
-function SignalRow({ signal }) {
-  const cls = LEVEL_CLASS[signal.level] || 'dormant'
-  return (
-    <div className="signal-row">
-      <span className={`sig ${cls}`}>{signal.level}</span>
-      <span>{signal.name}</span>
-      {signal.note && <span className="sig-note"> — {signal.note}</span>}
-    </div>
-  )
-}
+import { badgeClass, SignalRow } from '../utils'
 
 export default function Analysis({ type = 'btts', searchDate = '' }) {
   const [match,  setMatch]  = useState('')
@@ -63,14 +51,6 @@ export default function Analysis({ type = 'btts', searchDate = '' }) {
       console.error('History save failed:', e)
     }
     reset()
-  }
-
-  // badge class by verdict
-  const badgeClass = (v) => {
-    if (v === 'YES')    return 'badge-yes'
-    if (v === 'DRAW')   return 'badge-draw'
-    if (v === 'NO' || v === 'NO_DRAW') return 'badge-no'
-    return 'badge-skip'
   }
 
   const factors = result?.matched_signals?.filter(s => s.category === 'factor') ?? []

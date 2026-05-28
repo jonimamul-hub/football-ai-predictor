@@ -438,14 +438,7 @@ app.post('/api/search', async (req, res) => {
             // ✅ Scraper has data — use it, skip Claude for this league
             allMatches.push(...leagueMatches);
             scraperTotal += leagueMatches.length;
-            const round = leagueMatches[0]?.round || '';
-            await pool.query(
-              `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
-               VALUES ($1,$2,$3,$4,'scraper')
-               ON CONFLICT (search_date, league_key) DO UPDATE
-                 SET matches=$3, round=$4, found_via='scraper', created_at=NOW()`,
-              [date, leagueKey, JSON.stringify(leagueMatches), round]
-            ).catch(() => {});
+            await cacheSearchResult(date, leagueKey, leagueMatches, 'scraper');
             console.log(`📦 Scraper: ${leagueKey} → ${leagueMatches.length} matches`);
           } else {
             // ⚠ Scraper returned nothing for this league → queue Claude AI fallback
@@ -483,17 +476,8 @@ app.post('/api/search', async (req, res) => {
             const qL = league.name.toLowerCase();
             return mL.includes(qL) || qL.includes(mL);
           });
-          if (leagueMatches.length > 0) {
-            const round = leagueMatches[0]?.round || '';
-            await pool.query(
-              `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
-               VALUES ($1,$2,$3,$4,'web_search')
-               ON CONFLICT (search_date, league_key) DO UPDATE
-                 SET matches=$3, round=$4, found_via='web_search', created_at=NOW()`,
-              [date, leagueKey, JSON.stringify(leagueMatches), round]
-            ).catch(() => {});
-            console.log(`💾 Cached (AI): ${leagueKey} (${leagueMatches.length} matches)`);
-          }
+          await cacheSearchResult(date, leagueKey, leagueMatches, 'web_search');
+          if (leagueMatches.length > 0) console.log(`💾 Cached (AI): ${leagueKey} (${leagueMatches.length} matches)`);
         }
       }
 
@@ -520,16 +504,7 @@ app.post('/api/search', async (req, res) => {
           const qL = league.name.toLowerCase();
           return mL.includes(qL) || qL.includes(mL);
         });
-        if (leagueMatches.length > 0) {
-          const round = leagueMatches[0]?.round || '';
-          await pool.query(
-            `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
-             VALUES ($1,$2,$3,$4,'web_search')
-             ON CONFLICT (search_date, league_key) DO UPDATE
-               SET matches=$3, round=$4, found_via='web_search', created_at=NOW()`,
-            [date, leagueKey, JSON.stringify(leagueMatches), round]
-          ).catch(() => {});
-        }
+        await cacheSearchResult(date, leagueKey, leagueMatches, 'web_search');
       }
     }
 
@@ -728,6 +703,19 @@ app.delete('/api/history/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Helper: cache one league's search results ────────────────────────────
+async function cacheSearchResult(date, leagueKey, matches, foundVia) {
+  if (!matches.length) return;
+  const round = matches[0]?.round || '';
+  await pool.query(
+    `INSERT INTO search_cache (search_date, league_key, matches, round, found_via)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (search_date, league_key) DO UPDATE
+       SET matches=$3, round=$4, found_via=$5, created_at=NOW()`,
+    [date, leagueKey, JSON.stringify(matches), round, foundVia]
+  ).catch(() => {});
+}
 
 // ─── Helper: load signals from DB ─────────────────────────────────────────
 async function getSignals(type) {

@@ -1,6 +1,6 @@
 # Football AI Predictor — System Documentation
 
-> Auto-generated from full source read. Last updated: 2026-05-28.
+> Last updated: 2026-05-28. All 9 original bugs fixed. Code review pass completed.
 
 ---
 
@@ -318,9 +318,19 @@ Single-match BTTS analysis using AI #1 (Claude Sonnet). Loads all BTTS signals f
 
 ### `POST /api/analyze/draw`
 
-Single-match draw analysis. **Bug:** currently calls `analyzeBTTS()` (the BTTS function) instead of a dedicated draw analysis function — returns BTTS-style verdicts (YES/NO/SKIP-B) rather than DRAW/NO_DRAW/SKIP-B.
+Single-match draw analysis using AI #1 (Claude Sonnet). Loads all Draw signals from DB and applies them to the specific match.
 
-**Request/Response:** same shape as `/api/analyze/btts`.
+**Request:** `{ "match": "Liverpool vs Arsenal", "league": "Premier League", "date": "28.05.2026" }`
+
+**Response:**
+```json
+{
+  "verdict": "DRAW | NO_DRAW | SKIP-B",
+  "confidence": 72,
+  "matched_signals": [ { "name": "...", "level": "Good", "note": "why it applies" } ],
+  "reasoning": "2-3 sentence explanation"
+}
+```
 
 ---
 
@@ -590,19 +600,29 @@ All AI calls use `@anthropic-ai/sdk`. Models used:
 
 ### `server/ai/draw.js` — Draw Council (AI #1)
 
-**Triggered by:** `POST /api/recommend/draw` → `selectTopDraw()`
+**Triggered by:**
+- `POST /api/analyze/draw` → `analyzeDraw()` — single match analysis
+- `POST /api/recommend/draw` → `selectTopDraw()` — top 2 picks from candidates
 
-**Note:** No `analyzeDraw()` function exists in this file. Single-match draw analysis (`POST /api/analyze/draw`) incorrectly reuses `analyzeBTTS()`.
-
-**System prompt summary:**
+**System prompt summary (built dynamically from DB signals):**
 - Mission: JUSTIFIED predictions for matches ending in DRAW
 - Verdict rules:
   - `DRAW` = 1+ Ideal confirmed OR 2+ Good confirmed
   - `NO_DRAW` = strong evidence against draw (clear favourite, motivation asymmetry)
   - `SKIP-B` = conflicting/insufficient evidence
-- Recommendation mode only (no analysis mode): selects top **2** picks
+- In Recommendation mode: includes "Council Memory" (last 5 incorrect draw predictions) for calibration
 
-**Response shape:** same as BTTS but `verdict: "DRAW"`, max 2 items.
+**Analysis response shape:**
+```json
+{
+  "verdict": "DRAW",
+  "confidence": 65,
+  "matched_signals": [{ "name": "...", "level": "Good", "note": "why it applies" }],
+  "reasoning": "..."
+}
+```
+
+**Recommendation response shape:** same but as an array, max 2 items, only DRAW verdicts.
 
 ---
 
@@ -656,7 +676,7 @@ Passes all three props down to child components.
 
 ### `DrawTab.jsx`
 
-Tab container for Draw mode. Sections: Recommendation → History → Data Config. (No Analysis section — Draw has no single-match analysis UI.)
+Tab container for Draw mode. Sections: Analysis → Recommendation → History → Data Config. Default section: Analysis.
 
 **Props:** `leagues`, `searchDate`, `searchTz`
 
@@ -739,7 +759,6 @@ View and manage the signals database for a prediction type.
 **Sub-tabs:**
 - 📌 **Factors** — qualitative signals from LBR or manual entry. Shows level badge, name, source icon (📚 LBR / 👤 Manual), note, and league chips.
 - 📊 **Statistics** — measurable threshold signals. Same display.
-- 🔗 **Patterns** — static hardcoded data (BTTS only). Not from DB, not editable.
 
 Manual signals are added with level `Dormant`. LBR signals show which leagues they were detected in.
 
@@ -813,69 +832,35 @@ User clicks "Get Recommendations" in Recommendation tab
 
 ---
 
-## Known Bugs & Issues
+## Architecture Notes
 
-### 🔴 Critical
+### Shared Utilities
 
-**1. `POST /api/analyze/draw` calls wrong function**
-- File: `server/index.js` line ~556
-- `analyzeDraw` route calls `analyzeBTTS(match, league, date, signals)` instead of a dedicated draw analysis function
-- Result: Draw analysis returns BTTS-style verdicts (`YES`/`NO`/`SKIP-B`) and uses BTTS signals, not Draw signals
-- Fix needed: Create `analyzeDraw()` in `server/ai/draw.js` and call it here
+**`client/src/utils.jsx`** — shared React utilities imported by Analysis, Recommendation, and DataConfig:
+- `LEVEL_CLASS` — maps signal quality level → CSS class
+- `badgeClass(verdict)` — maps verdict string → badge CSS class (covers YES/NO/SKIP-B/DRAW/NO_DRAW)
+- `tzLabel(offset)` — formats a UTC offset number as `"UTC+4"` / `"UTC-3"` string
+- `SignalRow` — shared signal display component
 
----
+**`server/ai/utils.js`** — shared Node.js utilities imported by btts.js and draw.js:
+- `parseSingle(text)` — extract first `{...}` JSON object from Claude response; fallback: SKIP-B shape
+- `parseArray(text)` — extract first `[...]` JSON array from Claude response; fallback: `[]`
 
-### 🟡 Significant
+### History Check Flow
 
-**2. History "Check Result" (↻) uses random mock scores**
-- File: `client/src/components/History.jsx` — `checkResult()` function
-- The "↻" button and "Check All" generate a random score from a hardcoded 10-item array and derive win/lose from that random score
-- This is placeholder logic — there is no real score verification against 365scores or any external source
-- Fix needed: Implement real result checking via scraper `/fixtures` with `statusGroup == 4` (finished) and match the game by team names or game ID
+When a user clicks `↻` on a pending history entry:
+1. Client calls `POST /api/history/:id/check`
+2. Server fetches the history row, converts `DD.MM.YYYY` → `YYYY-MM-DD`
+3. Looks up the league's `competition_id` in the `leagues` table
+4. Calls scraper `GET /fixtures?date=<iso>&competition_ids=<id>` (no `upcoming_only`)
+5. Finds the match by partial team name match
+6. Extracts `score` field, derives `win`/`lose` based on `type` (BTTS: both > 0; Draw: h === a)
+7. Updates `history` row with real score and status
+8. If scraper fails or score unavailable → client falls back to manual edit form
 
-**3. `DataConfig` Patterns tab is static / non-functional**
-- File: `client/src/components/DataConfig.jsx`
-- The Patterns sub-tab shows hardcoded `PATTERNS_BTTS` array (4 items, not from DB)
-- Draw patterns tab always shows "Draw patterns accumulate as you use the system" empty state
-- These patterns are not saved, not editable, and not used in any AI predictions
+### Search Cache TTL
 
-**4. `search_cache` has no TTL / expiry**
-- File: `server/index.js`
-- Cache entries are never deleted or expired
-- If fixtures change (rescheduled, postponed), the cache will return stale data forever
-- Fix needed: Add `WHERE created_at > NOW() - INTERVAL '12 hours'` to cache lookup queries
-
----
-
-### 🟢 Minor / Cosmetic
-
-**5. `.rec-date-chip` CSS class is orphaned**
-- File: `client/src/App.css` lines 843–851
-- The `rec-date-chip` div was removed from `Recommendation.jsx` but its CSS rule remains
-- No functional impact; safe to delete the CSS block
-
-**6. Draw tab has no Analysis section**
-- `DrawTab.jsx` only has Recommendation / History / Data Config
-- Users cannot manually analyze a single draw match
-- By design or oversight — no Analysis component exists for draws
-
-**7. LBR polls in LeaguesPanel on every 5s interval even when panel is closed**
-- File: `client/src/components/LeaguesPanel.jsx`
-- The `setInterval` fires every 5s regardless of whether the panel is visible
-- The guard `needsPoll` check prevents unnecessary API calls when all statuses are final
-- Low impact: only fires when `lbr_status = 'running'` or `'pending'`
-
-**8. History "edit" form is tightly coupled to row layout**
-- The inline edit form replaces other controls in the row (score input, Win/Lose/Cancel buttons)
-- No keyboard shortcut to confirm; Enter key is not bound
-- Score field has `maxLength={7}` which may be insufficient for extra-time scores like `120-3`
-
-**9. `app.listen` starts before DB is ready**
-- File: `server/index.js` (intentional design decision)
-- Server starts listening immediately; `initDB()` runs inside the listen callback
-- Routes that query the DB (`/api/leagues`, `/api/signals`, etc.) will return 500 errors during the brief window before `initDB()` completes
-- This was done to ensure Railway health checks pass even if DB init is slow
-- Low impact in practice: DB init typically completes in < 2 seconds
+Cache entries older than 12 hours are ignored on lookup and overwritten on the next search. This prevents stale fixture data (postponed/rescheduled matches) from persisting indefinitely. The `created_at` column is refreshed to `NOW()` on every cache write via the `ON CONFLICT ... DO UPDATE` clause.
 
 ---
 
