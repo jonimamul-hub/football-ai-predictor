@@ -664,6 +664,9 @@ app.patch('/api/history/:id', async (req, res) => {
       [score, status, req.params.id]
     );
     res.json({ success: true, item: rows[0] });
+    if (status === 'win' || status === 'lose') {
+      runLearning(req.params.id);
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -719,6 +722,9 @@ app.post('/api/history/:id/check', async (req, res) => {
 
     await pool.query('UPDATE history SET score=$1, status=$2 WHERE id=$3', [score, status, entry.id]);
     res.json({ success: true, score, status });
+    if (status === 'win' || status === 'lose') {
+      runLearning(req.params.id);
+    }
   } catch (err) {
     console.error('History check error:', err.message);
     res.status(500).json({ error: err.message });
@@ -807,6 +813,74 @@ app.delete('/api/patterns/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Signal learning helpers ──────────────────────────────────────────────
+const LEVELS = ['Dormant', 'Weak', 'Good', 'Ideal'];
+
+function levelUp(level) {
+  const i = LEVELS.indexOf(level);
+  return i === -1 ? level : LEVELS[Math.min(i + 1, LEVELS.length - 1)];
+}
+
+function levelDown(level) {
+  const i = LEVELS.indexOf(level);
+  return i === -1 ? level : LEVELS[Math.max(i - 1, 0)];
+}
+
+async function runLearning(historyId) {
+  try {
+    const { rows } = await pool.query('SELECT * FROM history WHERE id=$1', [historyId]);
+    if (!rows.length) return;
+    const entry = rows[0];
+
+    const { status, type, match_name, match_date, verdict, matched_signals } = entry;
+    if (status !== 'win' && status !== 'lose') return;
+
+    const signals = Array.isArray(matched_signals) ? matched_signals : [];
+    if (!signals.length) {
+      console.log(`⚠ Learning skipped for "${match_name}" — no matched_signals saved`);
+      return;
+    }
+
+    const isWin = status === 'win';
+
+    for (const sig of signals) {
+      if (!sig.name) continue;
+
+      // Look up current level in DB (match by type + name, any category)
+      const { rows: sigRows } = await pool.query(
+        'SELECT id, level FROM signals WHERE type=$1 AND name=$2 LIMIT 1',
+        [type, sig.name]
+      );
+      if (!sigRows.length) {
+        console.log(`⚠ Learning: signal "${sig.name}" not found in DB — skipping`);
+        continue;
+      }
+
+      const { id: sigId, level: oldLevel } = sigRows[0];
+      const newLevel = isWin ? levelUp(oldLevel) : levelDown(oldLevel);
+
+      if (newLevel === oldLevel) {
+        console.log(`— Signal "${sig.name}" already at ${oldLevel} — no change`);
+        continue;
+      }
+
+      await pool.query('UPDATE signals SET level=$1 WHERE id=$2', [newLevel, sigId]);
+
+      await pool.query(
+        `INSERT INTO learning_log (type, signal_name, old_level, new_level, reason, match_name, match_date, verdict)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [type, sig.name, oldLevel, newLevel, isWin ? 'win' : 'lose', match_name, match_date, verdict]
+      );
+
+      const arrow  = isWin ? '📈' : '📉';
+      const action = isWin ? 'strengthened' : 'weakened';
+      console.log(`${arrow} Signal ${action}: "${sig.name}" ${oldLevel}→${newLevel} (${match_name})`);
+    }
+  } catch (err) {
+    console.error('runLearning error:', err.message);
+  }
+}
 
 // ─── Helper: cache one league's search results ────────────────────────────
 async function cacheSearchResult(date, leagueKey, matches, foundVia) {
