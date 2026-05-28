@@ -92,6 +92,18 @@ async function initDB() {
       created_at  TIMESTAMP    DEFAULT NOW(),
       UNIQUE(search_date, league_key)
     );
+
+    CREATE TABLE IF NOT EXISTS patterns (
+      id           SERIAL PRIMARY KEY,
+      type         VARCHAR(10)  NOT NULL,            -- btts | draw
+      name         TEXT         NOT NULL,
+      signals      JSONB        NOT NULL DEFAULT '[]',-- [{name,level,category}]
+      rating       VARCHAR(20)  NOT NULL DEFAULT 'Unstable', -- Elite|Stable|Unstable|Broken
+      usage_count  INTEGER      NOT NULL DEFAULT 0,
+      success_rate NUMERIC(5,2) NOT NULL DEFAULT 0,  -- 0.00–100.00
+      notes        TEXT                  DEFAULT '',
+      created_at   TIMESTAMP    DEFAULT NOW()
+    );
   `);
 
   // Idempotent column additions for existing deployments
@@ -698,6 +710,79 @@ app.post('/api/history/:id/check', async (req, res) => {
 app.delete('/api/history/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM history WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PATTERNS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/patterns?type=btts|draw
+app.get('/api/patterns', async (req, res) => {
+  const { type } = req.query;
+  if (!type) return res.status(400).json({ error: 'type query param required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM patterns WHERE type=$1
+       ORDER BY
+         CASE rating WHEN 'Elite' THEN 1 WHEN 'Stable' THEN 2 WHEN 'Unstable' THEN 3 ELSE 4 END,
+         name`,
+      [type]
+    );
+    res.json({ patterns: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/patterns  body: { type, name, signals, rating, notes }
+app.post('/api/patterns', async (req, res) => {
+  const { type, name, signals, rating, notes } = req.body;
+  if (!type || !name) return res.status(400).json({ error: 'type and name required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO patterns (type, name, signals, rating, notes)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [type, name, JSON.stringify(signals || []), rating || 'Unstable', notes || '']
+    );
+    res.json({ success: true, pattern: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/patterns/:id  — update any combination of fields
+app.patch('/api/patterns/:id', async (req, res) => {
+  const allowed = ['name', 'signals', 'rating', 'usage_count', 'success_rate', 'notes'];
+  const sets = [], vals = [];
+  let i = 1;
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) {
+      sets.push(`${key}=$${i++}`);
+      vals.push(key === 'signals' ? JSON.stringify(req.body[key]) : req.body[key]);
+    }
+  }
+  if (!sets.length) return res.status(400).json({ error: 'No fields to update' });
+  vals.push(req.params.id);
+  try {
+    const { rows } = await pool.query(
+      `UPDATE patterns SET ${sets.join(', ')} WHERE id=$${i} RETURNING *`,
+      vals
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Pattern not found' });
+    res.json({ success: true, pattern: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/patterns/:id
+app.delete('/api/patterns/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM patterns WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -42,6 +42,12 @@ export const api = {
   recommendBTTS: (matches)    => post('/api/recommend/btts', { matches }),
   recommendDraw: (matches)    => post('/api/recommend/draw', { matches }),
 
+  // ── Patterns ───────────────────────────────────────────────────────────
+  getPatterns:   (type)       => req(`/api/patterns?type=${type}`),
+  addPattern:    (data)       => post('/api/patterns', data),
+  updatePattern: (id, data)   => patch(`/api/patterns/${id}`, data),
+  deletePattern: (id)         => del(`/api/patterns/${id}`),
+
   // ── History ────────────────────────────────────────────────────────────
   getHistory:    (type)       => req(`/api/history?type=${type}`),
   addHistory:    (data)       => post('/api/history', data),
