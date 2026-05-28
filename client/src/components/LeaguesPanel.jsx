@@ -38,7 +38,11 @@ export default function LeaguesPanel({ onLeagueChange }) {
         const needsPoll = c.some(ct =>
           ct.leagues.some(l => l.lbr_status === 'running' || l.lbr_status === 'pending')
         )
-        if (needsPoll) loadLeagues()
+        if (needsPoll) {
+          loadLeagues()
+        } else {
+          clearInterval(iv)
+        }
         return c
       })
     }, 5000)

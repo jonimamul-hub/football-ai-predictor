@@ -32,6 +32,39 @@ ${stats}
 Return ONLY valid JSON — no markdown, no extra text.`;
 }
 
+// ─── Single match analysis (Analysis mode) ─────────────────────────────────
+async function analyzeDraw(match, league, date, signals) {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const prompt = `[ANALYSIS MODE] Always analyze — never skip.
+
+Match : ${match}
+League: ${league}
+Date  : ${date}
+
+Apply every available draw signal to this specific match. Consider both teams' recent form, motivation levels, tactical setup, and historical head-to-head patterns.
+
+Return JSON:
+{
+  "verdict": "DRAW|NO_DRAW|SKIP-B",
+  "confidence": <0-100>,
+  "matched_signals": [
+    { "name": "signal name", "level": "Ideal|Good|Weak|Dormant", "note": "why it applies or contradicts for this match" }
+  ],
+  "reasoning": "2-3 sentences explaining the decisive factor(s) and why this verdict"
+}`;
+
+  const resp = await client.messages.create({
+    model:      'claude-sonnet-4-5-20250929',
+    max_tokens: 2048,
+    system:     buildSystemPrompt(signals),
+    messages:   [{ role: 'user', content: prompt }]
+  });
+
+  const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  return parseSingle(text);
+}
+
 // ─── Multi match — select TOP 2 (Recommendation mode) ─────────────────────
 async function selectTopDraw(candidates, signals, recentLosses = []) {
   if (!candidates.length) return [];
@@ -87,6 +120,15 @@ Only DRAW verdicts in the array.`;
   return parseArray(text);
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function parseSingle(text) {
+  try {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+  } catch { /* fall through */ }
+  return { verdict: 'SKIP-B', confidence: 0, matched_signals: [], reasoning: 'Analysis failed — could not parse response.' };
+}
+
 function parseArray(text) {
   try {
     const m = text.match(/\[[\s\S]*\]/);
@@ -95,4 +137,4 @@ function parseArray(text) {
   return [];
 }
 
-module.exports = { selectTopDraw };
+module.exports = { analyzeDraw, selectTopDraw };

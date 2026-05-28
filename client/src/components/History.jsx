@@ -37,15 +37,13 @@ export default function History({ type }) {
   const checkResult = async (id) => {
     setChecking(prev => new Set([...prev, id]))
     try {
-      const scores = ['2-1','1-1','0-0','3-0','1-2','0-1','2-2','1-0','3-1','0-2']
-      const score  = scores[Math.floor(Math.random() * scores.length)]
-      const [h, a] = score.split('-').map(Number)
-      const win    = type === 'btts' ? (h > 0 && a > 0) : (h === a)
-      const status = win ? 'win' : 'lose'
-      await api.updateHistory(id, { score, status })
+      const { score, status } = await api.checkResult(id)
       setRows(prev => prev.map(r => r.id === id ? { ...r, score, status } : r))
     } catch (e) {
-      console.error('Check failed:', e)
+      console.error('Check failed — opening edit form:', e)
+      // Scraper could not provide a score; let the user enter it manually
+      const row = rows.find(r => r.id === id)
+      if (row) startEdit(row)
     } finally {
       setChecking(prev => { const s = new Set(prev); s.delete(id); return s })
     }
@@ -197,9 +195,19 @@ export default function History({ type }) {
                     value={editScore}
                     onChange={e => setEditScore(e.target.value)}
                     placeholder="1-1"
-                    maxLength={7}
+                    maxLength={10}
                     autoFocus
-                    onKeyDown={e => { if (e.key === 'Escape') cancelEdit() }}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') { cancelEdit(); return }
+                      if (e.key === 'Enter') {
+                        const parts = editScore.trim().split('-').map(Number)
+                        const h = parts[0], a = parts[1]
+                        const win = (!isNaN(h) && !isNaN(a))
+                          ? (type === 'btts' ? (h > 0 && a > 0) : (h === a))
+                          : null
+                        saveEdit(r.id, win === true ? 'win' : win === false ? 'lose' : 'pending')
+                      }
+                    }}
                   />
                   <button className="hist-save-btn win"  onClick={() => saveEdit(r.id, 'win')}>✓ Win</button>
                   <button className="hist-save-btn lose" onClick={() => saveEdit(r.id, 'lose')}>✗ Lose</button>

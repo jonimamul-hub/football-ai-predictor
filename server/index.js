@@ -7,7 +7,7 @@ require('dotenv').config();
 const { searchMatches } = require('./ai/search');
 const { runLBR }        = require('./ai/lbr');
 const { analyzeBTTS, selectTopBTTS } = require('./ai/btts');
-const { selectTopDraw } = require('./ai/draw');
+const { analyzeDraw, selectTopDraw } = require('./ai/draw');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -131,9 +131,18 @@ async function initDB() {
   console.log('✅ DB ready');
 }
 
+// ─── DB-ready gate ────────────────────────────────────────────────────────
+let dbReady = false;
+
+function requireDB(req, res, next) {
+  if (dbReady) return next();
+  res.status(503).json({ error: 'Server is starting up — please try again in a moment' });
+}
+
 // ─── Middleware ───────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
+app.use('/api', requireDB);
 
 // ─── Health ───────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
@@ -359,7 +368,9 @@ app.post('/api/search', async (req, res) => {
     for (const league of leagues) {
       const leagueKey = `${league.country}:${league.name}`;
       const { rows } = await pool.query(
-        'SELECT matches FROM search_cache WHERE search_date=$1 AND league_key=$2',
+        `SELECT matches FROM search_cache
+         WHERE search_date=$1 AND league_key=$2
+           AND created_at > NOW() - INTERVAL '12 hours'`,
         [date, leagueKey]
       );
       if (rows.length > 0) {
@@ -553,7 +564,7 @@ app.post('/api/analyze/draw', async (req, res) => {
   if (!match) return res.status(400).json({ error: 'match required' });
   try {
     const signals = await getSignals('draw');
-    const result  = await analyzeBTTS(match, league || '', date || '', signals); // reuse same pattern
+    const result  = await analyzeDraw(match, league || '', date || '', signals);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -652,6 +663,62 @@ app.patch('/api/history/:id', async (req, res) => {
   }
 });
 
+// POST /api/history/:id/check  — fetch real score from scraper and update
+app.post('/api/history/:id/check', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM history WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'History entry not found' });
+    const entry = rows[0];
+
+    if (!SCRAPER_URL) return res.status(422).json({ error: 'Scraper not configured' });
+    if (!entry.match_date) return res.status(422).json({ error: 'No match date on record' });
+
+    // Convert DD.MM.YYYY → YYYY-MM-DD
+    const dateParts = entry.match_date.split('.');
+    const isoDate   = dateParts.length === 3
+      ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`
+      : entry.match_date;
+
+    // Find the league's competition_id
+    const { rows: lgRows } = await pool.query(
+      'SELECT competition_id FROM leagues WHERE name=$1 LIMIT 1',
+      [entry.league]
+    ).catch(() => ({ rows: [] }));
+
+    const competitionId = lgRows[0]?.competition_id;
+    if (!competitionId) return res.status(422).json({ error: 'No competition_id for this league' });
+
+    const data    = await scraperGet('/fixtures', { date: isoDate, competition_ids: String(competitionId) });
+    const matches = data?.matches || [];
+
+    // Match by name (teams in either order)
+    const nameParts = (entry.match_name || '').split(' vs ');
+    const home      = (nameParts[0] || '').toLowerCase().trim();
+    const away      = (nameParts[1] || '').toLowerCase().trim();
+    const found     = matches.find(m => {
+      const mn = (m.match || '').toLowerCase();
+      return (home && mn.includes(home)) || (away && mn.includes(away));
+    });
+
+    if (!found || !found.score) {
+      return res.status(422).json({ error: 'Score not yet available — match may not have been played' });
+    }
+
+    const score   = found.score;
+    const [h, a]  = score.split('-').map(Number);
+    const win     = (!isNaN(h) && !isNaN(a))
+      ? (entry.type === 'btts' ? (h > 0 && a > 0) : (h === a))
+      : null;
+    const status  = win === true ? 'win' : win === false ? 'lose' : 'pending';
+
+    await pool.query('UPDATE history SET score=$1, status=$2 WHERE id=$3', [score, status, entry.id]);
+    res.json({ success: true, score, status });
+  } catch (err) {
+    console.error('History check error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/history/:id
 app.delete('/api/history/:id', async (req, res) => {
   try {
@@ -705,7 +772,7 @@ console.log(`🚀 Starting server on port ${PORT}…`);
 app.listen(PORT, () => {
   console.log(`✅ Server listening on port ${PORT}`);
   initDB()
-    .then(() => console.log('✅ DB ready'))
+    .then(() => { dbReady = true; console.log('✅ DB ready'); })
     .catch(err => {
       console.error('❌ DB init failed:', err.message);
       // Don't exit — keep the server up so health check keeps passing.

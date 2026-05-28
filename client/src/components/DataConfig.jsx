@@ -1,18 +1,9 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 
-const PATTERNS_BTTS = [
-  { name: 'High motivation + BTTS >= 60%', level: 'Elite',    desc: 'Confirmed in 6/7. Most reliable combination.' },
-  { name: 'Derby effect + H2H BTTS >= 4/6', level: 'Stable',  desc: 'Confirmed in 4/6. Works well in top leagues.' },
-  { name: 'Open style + Away goals >= 1.5',  level: 'Unstable',desc: 'Confirmed in 3/7. Needs more data.' },
-  { name: 'No relegation + Low motivation',  level: 'Broken',  desc: 'Confirmed in 1/5. Avoid.' },
-]
-
 const LEVEL_CLASS = {
   Ideal: 'ideal', Good: 'good', Weak: 'weak', Dormant: 'dormant',
-  Elite: 'elite', Stable: 'stable', Unstable: 'unstable', Broken: 'broken'
 }
-const PAT_CLASS = { Elite: 'pat-elite', Stable: 'pat-stable', Unstable: 'pat-unstable', Broken: 'pat-broken' }
 
 export default function DataConfig({ type }) {
   const [tab,       setTab]       = useState('factors')
@@ -94,9 +85,8 @@ export default function DataConfig({ type }) {
   return (
     <div className="card">
       <div className="sub-nav">
-        <button className={"snb " + (tab === 'factors'  ? 'active' : '')} onClick={() => setTab('factors')}>📌 Factors ({factors.length})</button>
-        <button className={"snb " + (tab === 'stats'    ? 'active' : '')} onClick={() => setTab('stats')}>📊 Statistics ({stats.length})</button>
-        <button className={"snb " + (tab === 'patterns' ? 'active' : '')} onClick={() => setTab('patterns')}>🔗 Patterns</button>
+        <button className={"snb " + (tab === 'factors' ? 'active' : '')} onClick={() => setTab('factors')}>📌 Factors ({factors.length})</button>
+        <button className={"snb " + (tab === 'stats'   ? 'active' : '')} onClick={() => setTab('stats')}>📊 Statistics ({stats.length})</button>
       </div>
 
       {tab === 'factors' && (
@@ -177,24 +167,6 @@ export default function DataConfig({ type }) {
         </div>
       )}
 
-      {tab === 'patterns' && (
-        <div>
-          {(type === 'btts' ? PATTERNS_BTTS : []).map((p, i) => (
-            <div key={i} className="pat-row">
-              <div className="pat-head">
-                <span className="pat-name">{p.name}</span>
-                <span className={`pat-badge ${PAT_CLASS[p.level]}`}>{p.level}</span>
-              </div>
-              <div className="pat-desc">{p.desc}</div>
-            </div>
-          ))}
-          {type === 'draw' && (
-            <div className="empty-state" style={{ padding: '1.5rem', fontSize: '12px' }}>
-              Draw patterns accumulate as you use the system.
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }

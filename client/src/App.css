@@ -839,17 +839,6 @@
 
 .tz-input:focus { border-color: #3a4060; }
 
-/* Date chip in Recommendation sub-nav */
-.rec-date-chip {
-  margin-left: auto;
-  font-size: 11px;
-  color: #6b6f85;
-  padding: 0 12px;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-}
-
 /* Date note in Analysis form — mirrors the header date, read-only */
 .ana-date-note {
   font-size: 11px;
