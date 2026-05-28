@@ -4,9 +4,11 @@ import { checkOllamaAvailable, askOllama } from '../ollama_agent'
 
 export default function AIAssistant() {
   // ── Ollama status ─────────────────────────────────────────────────────
-  const [ollamaStatus,  setOllamaStatus]  = useState('checking') // checking|online|offline|remote
+  const [ollamaStatus,  setOllamaStatus]  = useState('checking') // checking|online|offline
   const [ollamaModels,  setOllamaModels]  = useState([])
   const [selectedModel, setSelectedModel] = useState('')
+  const [ollamaBase,    setOllamaBase]    = useState(null)   // resolved URL (proxy or direct)
+  const [ollamaVia,     setOllamaVia]     = useState(null)   // 'proxy' | 'direct' | null
 
   // ── Chat state ────────────────────────────────────────────────────────
   const [messages,  setMessages]  = useState([])  // {id,role,content,source,saved}
@@ -33,9 +35,11 @@ export default function AIAssistant() {
   // ── Ollama ────────────────────────────────────────────────────────────
   async function checkOllama() {
     setOllamaStatus('checking')
-    const { available, models, reason } = await checkOllamaAvailable()
-    setOllamaStatus(available ? 'online' : (reason || 'offline'))
+    const { available, models, base, via } = await checkOllamaAvailable()
+    setOllamaStatus(available ? 'online' : 'offline')
     setOllamaModels(models)
+    setOllamaBase(base)
+    setOllamaVia(via)
     if (models.length > 0) setSelectedModel(models[0])
   }
 
@@ -99,9 +103,9 @@ export default function AIAssistant() {
       let source = 'claude'
 
       // 1 — Try Ollama first (if available)
-      if (ollamaStatus === 'online' && selectedModel) {
+      if (ollamaStatus === 'online' && selectedModel && ollamaBase) {
         try {
-          const result = await askOllama(aiMessages, { model: selectedModel, context: fullContext })
+          const result = await askOllama(aiMessages, { base: ollamaBase, model: selectedModel, context: fullContext })
           if (result.text) {
             reply  = result.text
             source = 'ollama'
@@ -152,8 +156,9 @@ export default function AIAssistant() {
   }
 
   // ── Status helpers ────────────────────────────────────────────────────
-  const dotColor    = { checking: '#888', online: '#4ade80', offline: '#f87171', remote: '#f5a623' }[ollamaStatus] || '#888'
-  const statusLabel = { checking: 'Checking…', online: 'Online', offline: 'Offline', remote: 'Local only' }[ollamaStatus] || '—'
+  const dotColor    = { checking: '#888', online: '#4ade80', offline: '#f87171' }[ollamaStatus] || '#888'
+  const viaLabel    = ollamaVia === 'proxy' ? ' · proxy' : ollamaVia === 'direct' ? ' · direct' : ''
+  const statusLabel = { checking: 'Checking…', online: `Online${viaLabel}`, offline: 'Offline' }[ollamaStatus] || '—'
 
   return (
     <div className="ai-assistant">
@@ -186,16 +191,10 @@ export default function AIAssistant() {
       </div>
 
       {/* ── Ollama setup note ─────────────────────────────────────────── */}
-      {ollamaStatus === 'remote' && (
-        <div className="aia-setup-note">
-          ℹ Ollama is only available when accessing the app from localhost.
-          On the Railway URL the browser origin is blocked by Ollama's CORS policy — Claude will answer instead.
-        </div>
-      )}
       {ollamaStatus === 'offline' && (
         <div className="aia-setup-note">
-          ⚠ Ollama not detected at localhost:11434. Start it with:&nbsp;
-          <code>OLLAMA_ORIGINS=http://localhost:5173 ollama serve</code> — Claude will answer in the meantime.
+          ⚠ Ollama not reachable. To enable it, run in a terminal on your machine:&nbsp;
+          <code>node proxy.js</code>&nbsp; (then click ↺ to recheck) — Claude will answer in the meantime.
         </div>
       )}
 
@@ -246,10 +245,8 @@ export default function AIAssistant() {
             <div className="aia-welcome-sub">
               Ask about signals, patterns, predictions, or specific matches.
               {ollamaStatus === 'online'
-                ? ` Ollama (${selectedModel}) answers first — Claude as fallback.`
-                : ollamaStatus === 'remote'
-                  ? ' Claude will answer (Ollama only works on localhost).'
-                  : ' Claude will answer (Ollama offline).'}
+                ? ` Ollama (${selectedModel}) answers first via ${ollamaVia} — Claude as fallback.`
+                : ' Claude will answer. Run node proxy.js to enable Ollama.'}
               <br />Approved knowledge is automatically fed to Ollama as context.
             </div>
           </div>
