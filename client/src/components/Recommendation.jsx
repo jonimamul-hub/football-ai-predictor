@@ -78,12 +78,14 @@ export default function Recommendation({ type, leagues = [], searchDate, searchT
     try {
       await api.addHistory({
         type,
-        match_name: rec.match,
-        league:     rec.league,
-        match_date: rec.date,
-        verdict:    rec.verdict,
-        source:     'REC',
-        reasoning:  rec.reasoning
+        match_name:      rec.match,
+        league:          rec.league,
+        match_date:      rec.date,
+        verdict:         rec.verdict,
+        source:          'REC',
+        reasoning:       rec.reasoning,
+        matched_signals: rec.matched_signals || [],
+        confidence:      rec.confidence ?? null,
       })
     } catch (e) {
       console.error('History save failed:', e)

@@ -69,17 +69,19 @@ async function initDB() {
     );
 
     CREATE TABLE IF NOT EXISTS history (
-      id          SERIAL  PRIMARY KEY,
-      type        VARCHAR(10)  NOT NULL,
-      match_name  VARCHAR(200) NOT NULL,
-      league      VARCHAR(200),
-      match_date  VARCHAR(20),
-      verdict     VARCHAR(20),
-      source      VARCHAR(10)  DEFAULT 'REC',
-      status      VARCHAR(20)  DEFAULT 'pending',
-      score       VARCHAR(10),
-      reasoning   TEXT,
-      created_at  TIMESTAMP    DEFAULT NOW()
+      id               SERIAL  PRIMARY KEY,
+      type             VARCHAR(10)  NOT NULL,
+      match_name       VARCHAR(200) NOT NULL,
+      league           VARCHAR(200),
+      match_date       VARCHAR(20),
+      verdict          VARCHAR(20),
+      source           VARCHAR(10)  DEFAULT 'REC',
+      status           VARCHAR(20)  DEFAULT 'pending',
+      score            VARCHAR(10),
+      reasoning        TEXT,
+      matched_signals  JSONB        DEFAULT '[]',
+      confidence       INTEGER,
+      created_at       TIMESTAMP    DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS search_cache (
@@ -120,6 +122,8 @@ async function initDB() {
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS found_via_detail TEXT    DEFAULT NULL`,
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS competition_id   INTEGER DEFAULT NULL`,
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS season_num       INTEGER DEFAULT NULL`,
+    `ALTER TABLE history ADD COLUMN IF NOT EXISTS matched_signals  JSONB   DEFAULT '[]'`,
+    `ALTER TABLE history ADD COLUMN IF NOT EXISTS confidence       INTEGER`,
   ];
   for (const sql of colMigrations) {
     await pool.query(sql);
@@ -623,12 +627,13 @@ app.get('/api/history', async (req, res) => {
 
 // POST /api/history
 app.post('/api/history', async (req, res) => {
-  const { type, match_name, league, match_date, verdict, source, reasoning } = req.body;
+  const { type, match_name, league, match_date, verdict, source, reasoning, matched_signals, confidence } = req.body;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO history (type, match_name, league, match_date, verdict, source, reasoning)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [type, match_name, league, match_date, verdict, source || 'REC', reasoning || '']
+      `INSERT INTO history (type, match_name, league, match_date, verdict, source, reasoning, matched_signals, confidence)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [type, match_name, league, match_date, verdict, source || 'REC', reasoning || '',
+       JSON.stringify(matched_signals || []), confidence ?? null]
     );
     res.json({ success: true, item: rows[0] });
   } catch (err) {

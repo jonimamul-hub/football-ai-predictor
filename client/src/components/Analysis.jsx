@@ -36,16 +36,17 @@ export default function Analysis({ type = 'btts', searchDate = '' }) {
 
   const saveToHistory = async () => {
     if (!result) return
-    const verdictLabel = result.verdict       // YES / NO / SKIP-B / DRAW / NO_DRAW
     try {
       await api.addHistory({
         type,
-        match_name: result.match,
-        league:     result.league,
-        match_date: result.date,
-        verdict:    verdictLabel,
-        source:     'ANA',
-        reasoning:  result.reasoning
+        match_name:      result.match,
+        league:          result.league,
+        match_date:      result.date,
+        verdict:         result.verdict,
+        source:          'ANA',
+        reasoning:       result.reasoning,
+        matched_signals: result.matched_signals || [],
+        confidence:      result.confidence ?? null,
       })
     } catch (e) {
       console.error('History save failed:', e)
