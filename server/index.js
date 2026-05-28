@@ -106,6 +106,19 @@ async function initDB() {
       notes        TEXT                  DEFAULT '',
       created_at   TIMESTAMP    DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS learning_log (
+      id          SERIAL PRIMARY KEY,
+      type        VARCHAR(10),
+      signal_name VARCHAR(200),
+      old_level   VARCHAR(20),
+      new_level   VARCHAR(20),
+      reason      VARCHAR(20),
+      match_name  VARCHAR(200),
+      match_date  VARCHAR(20),
+      verdict     VARCHAR(20),
+      created_at  TIMESTAMP DEFAULT NOW()
+    );
   `);
 
   // Idempotent column additions for existing deployments
@@ -124,6 +137,7 @@ async function initDB() {
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS season_num       INTEGER DEFAULT NULL`,
     `ALTER TABLE history ADD COLUMN IF NOT EXISTS matched_signals  JSONB   DEFAULT '[]'`,
     `ALTER TABLE history ADD COLUMN IF NOT EXISTS confidence       INTEGER`,
+    `CREATE TABLE IF NOT EXISTS learning_log (id SERIAL PRIMARY KEY, type VARCHAR(10), signal_name VARCHAR(200), old_level VARCHAR(20), new_level VARCHAR(20), reason VARCHAR(20), match_name VARCHAR(200), match_date VARCHAR(20), verdict VARCHAR(20), created_at TIMESTAMP DEFAULT NOW())`,
   ];
   for (const sql of colMigrations) {
     await pool.query(sql);
