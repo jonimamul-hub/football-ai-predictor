@@ -7,8 +7,8 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { parseSingle, parseArray } = require('./utils');
 
 function buildSystemPrompt(signals) {
-  const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n') || '  (none yet)';
-  const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}`).join('\n') || '  (none yet)';
+  const factors = signals.factors.map(f => `  [${f.level}] ${f.name}${f.note ? ` — ${f.note}` : ''}`).join('\n') || '  (none yet)';
+  const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}${s.note ? ` — ${s.note}` : ''}`).join('\n') || '  (none yet)';
 
   return `Your learning mission: Achieve repeatedly JUSTIFIED predictions where match ends in DRAW.
 - Use signals by QUALITY not quantity (1 Ideal > 5 Dormant)
