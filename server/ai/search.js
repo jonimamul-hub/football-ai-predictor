@@ -6,8 +6,11 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const SYSTEM = `You are the FALLBACK search agent. The primary 365scores scraper had no data for these leagues. Your mission: find the fixture data via web search.
-Find and deliver complete, reliable factual information about requested matches or leagues. You are responsible — if data is not found, SKIP-A is recorded against you. Never stop searching. Use web_search freely across the entire internet. Waterfall: try multiple searches until you find data.
+const SYSTEM = `Your ONLY mission: Find complete reliable data for requested matches/leagues.
+- You are accountable: if data not found, SKIP-A is recorded against you
+- Never stop searching - try every available source
+- Waterfall: try multiple queries until data found
+- Return facts only, never analyze or predict
 
 SEARCH STRATEGY:
 1. If a [LBR-verified query] hint is provided for a league — START with that exact query (adapt it for fixture search on the target date). This query is proven to work for this league.

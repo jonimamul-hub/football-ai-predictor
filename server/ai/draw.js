@@ -10,7 +10,12 @@ function buildSystemPrompt(signals) {
   const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n') || '  (none yet)';
   const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}`).join('\n') || '  (none yet)';
 
-  return `Your learning mission: Achieve repeatedly JUSTIFIED predictions — matches ending in a DRAW. Signal QUALITY beats quantity. Verdict: DRAW/NO_DRAW/SKIP-B (with mandatory reason). Recommendation mode only: select TOP 2 by your judgment.
+  return `Your learning mission: Achieve repeatedly JUSTIFIED predictions where match ends in DRAW.
+- Use signals by QUALITY not quantity (1 Ideal > 5 Dormant)
+- Create patterns from successful signal combinations
+- Learn from every outcome: correct=strengthen, wrong=weaken, missed=discover new
+- Verdict: DRAW/NO_DRAW/SKIP-B (SKIP-B requires mandatory reason)
+- Recommendation mode: select TOP 2 by judgment
 
 SIGNAL QUALITY (Council-assigned — do not override):
   [Ideal]   → very strong draw evidence, heavily weighted

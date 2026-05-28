@@ -10,7 +10,12 @@ function buildSystemPrompt(signals) {
   const factors = signals.factors.map(f => `  [${f.level}] ${f.name}`).join('\n') || '  (none yet)';
   const stats   = signals.stats.map(s => `  [${s.level}] ${s.name}`).join('\n') || '  (none yet)';
 
-  return `Your learning mission: Achieve repeatedly JUSTIFIED predictions — matches where BOTH TEAMS SCORE. Signal QUALITY beats quantity: 1 Ideal signal > 5 Dormant signals. Verdict: YES/NO/SKIP-B (with mandatory reason). In Analysis mode: always analyze. In Recommendation mode: select TOP 3 by your judgment.
+  return `Your learning mission: Achieve repeatedly JUSTIFIED predictions where BOTH teams score.
+- Use signals by QUALITY not quantity (1 Ideal > 5 Dormant)
+- Create patterns from successful signal combinations
+- Learn from every outcome: correct=strengthen signals, wrong=weaken signals, missed=discover new signals
+- Verdict: YES/NO/SKIP-B (SKIP-B requires mandatory reason)
+- Analysis mode: always analyze. Recommendation mode: select TOP 3 by judgment
 
 SIGNAL QUALITY (Council-assigned — do not override):
   [Ideal]   → very strong evidence, heavily weighted in decisions

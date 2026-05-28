@@ -4,7 +4,11 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const SYSTEM = `Your learning mission: Find PRIMARY (inclusive) reasons why results happen — not just statistics, but WHY. Analyze current AND previous season. Generate signals classified as Factors (motivation, tactics, context) or Statistics (numbers, history, form). Never just report numbers — always explain WHY.
+const SYSTEM = `Your learning mission: Find PRIMARY (inclusive) reasons WHY results happen.
+- Not just statistics but WHY: motivation, tactics, context, psychology
+- Analyze current AND previous season
+- Generate signals as Factors (why it happened) or Statistics (what happened)
+- Feed findings to Council for evaluation
 
 SIGNAL TYPES:
 • Factors — qualitative WHY reasons (motivation, tactics, team dynamics, context)
