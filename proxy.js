@@ -63,13 +63,21 @@ const server = http.createServer((req, res) => {
   // Strip /api/ollama prefix, forward the rest to Ollama
   const targetPath = req.url.replace(/^\/api\/ollama/, '') || '/';
 
+  // Strip origin + referer so Ollama never sees the browser's Railway domain.
+  // Ollama applies its own CORS check against these headers and returns 403
+  // if the origin isn't in OLLAMA_ORIGINS — but that check is irrelevant here
+  // because the proxy (not the browser) is the one talking to Ollama.
+  const forwardHeaders = { ...req.headers, host: `${OLLAMA_HOST}:${OLLAMA_PORT}` };
+  delete forwardHeaders['origin'];
+  delete forwardHeaders['referer'];
+
   const proxyReq = http.request(
     {
       hostname: OLLAMA_HOST,
       port:     OLLAMA_PORT,
       path:     targetPath,
       method:   req.method,
-      headers:  { ...req.headers, host: `${OLLAMA_HOST}:${OLLAMA_PORT}` },
+      headers:  forwardHeaders,
     },
     (proxyRes) => {
       // Forward CORS headers already set; pass everything else through
