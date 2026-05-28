@@ -1,6 +1,7 @@
 const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
+const crypto  = require('crypto');
 const { Pool } = require('pg');
 require('dotenv').config();
 
@@ -183,6 +184,32 @@ function requireDB(req, res, next) {
 // ─── Middleware ───────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
+
+// ─── Auth (no DB required) ───────────────────────────────────────────────
+function makeAuthToken(pwd) {
+  return crypto.createHash('sha256').update(pwd + '-football-ai-v1').digest('hex');
+}
+
+// POST /api/auth/login
+app.post('/api/auth/login', (req, res) => {
+  const pwd = process.env.APP_PASSWORD;
+  if (!pwd) return res.json({ ok: true, token: 'open' });        // no password set → open
+  const { password } = req.body || {};
+  if (!password || password !== pwd) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  res.json({ ok: true, token: makeAuthToken(pwd) });
+});
+
+// GET /api/auth/check
+app.get('/api/auth/check', (req, res) => {
+  const pwd = process.env.APP_PASSWORD;
+  if (!pwd) return res.json({ ok: true });                       // no password set → open
+  const token = req.headers['x-auth-token'];
+  if (token && token === makeAuthToken(pwd)) return res.json({ ok: true });
+  res.status(401).json({ error: 'Unauthorized' });
+});
+
 app.use('/api', requireDB);
 
 // ─── Health ───────────────────────────────────────────────────────────────

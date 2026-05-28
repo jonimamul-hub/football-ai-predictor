@@ -4,6 +4,7 @@ import BTTSTab      from './components/BTTSTab'
 import DrawTab      from './components/DrawTab'
 import LeaguesPanel from './components/LeaguesPanel'
 import AIAssistant  from './components/AIAssistant'
+import AuthGate     from './components/AuthGate'
 import { api }      from './api'
 import './App.css'
 
@@ -47,6 +48,7 @@ export default function App() {
   }
 
   return (
+    <AuthGate>
     <div className="app">
       <Topbar
         mainTab={mainTab}
@@ -76,5 +78,6 @@ export default function App() {
         )}
       </main>
     </div>
+    </AuthGate>
   )
 }

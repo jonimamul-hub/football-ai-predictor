@@ -21,6 +21,12 @@ const del  = (path)       => req(path, { method: 'DELETE' });
 const patch = (path, body) => req(path, { method: 'PATCH', body: JSON.stringify(body) });
 
 export const api = {
+  // ── Auth ───────────────────────────────────────────────────────────────
+  authLogin: (password) => post('/api/auth/login', { password }),
+  authCheck: (token)    => req('/api/auth/check', {
+    headers: { 'Content-Type': 'application/json', 'x-auth-token': token || '' },
+  }),
+
   // ── Leagues ────────────────────────────────────────────────────────────
   getLeagues:    ()           => req('/api/leagues'),
   addLeague:     (data)       => post('/api/leagues', data),
