@@ -1185,7 +1185,7 @@
   overflow: hidden;
 }
 
-/* Mode selector bar */
+/* Mode / context bar */
 .aia-modebar {
   display: flex;
   align-items: center;
@@ -1196,27 +1196,10 @@
   flex-shrink: 0;
   gap: 10px;
 }
-.aia-mode-btns {
-  display: flex;
-  gap: 6px;
-}
-.aia-mode-btn {
-  background: #1c1f2e;
-  border: 1px solid #2a2d3a;
-  border-radius: 6px;
-  color: #8890a0;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 14px;
-  cursor: pointer;
-  transition: color .15s, border-color .15s, background .15s;
-}
-.aia-mode-btn:hover { color: #c8cad6; border-color: #3a3d4a; }
-.aia-mode-btn.active {
-  background: #1c2450;
-  border-color: #3a4470;
-  color: #90b0f0;
-  font-weight: 600;
+.aia-modebar-hint {
+  font-size: 11px;
+  color: #50586a;
+  font-style: italic;
 }
 .aia-crit-btn {
   background: #1c1f2e;
@@ -1298,10 +1281,14 @@
   text-transform: uppercase;
   letter-spacing: .04em;
 }
-.aia-src-ollama   { background: #14142a; color: #818cf8; border: 1px solid #2a2a5a; }
 .aia-src-claude   { background: #1a1208; color: #f5a623; border: 1px solid #3a2800; }
 .aia-src-error    { background: #1a0808; color: #f87171; border: 1px solid #3a1a1a; }
 .aia-src-thinking { background: #14171f; color: #8890a0; border: 1px solid #2a2d3a; }
+
+/* User message — tinted by which mode sent it */
+.aia-src-user-lbr      { background: #0e1a2e; color: #7ec8e3; border: 1px solid #1a3a5a; }
+.aia-src-user-analysis { background: #0e1e14; color: #6ee7a0; border: 1px solid #1a4030; }
+.aia-src-user-council  { background: #1e1208; color: #f5c87a; border: 1px solid #3a2800; }
 
 .aia-msg-body {
   background: #1c1f2e;
@@ -1366,20 +1353,49 @@
 }
 .aia-input:focus { outline: none; border-color: #4a4f80; }
 .aia-input::placeholder { color: #40435a; }
+
+/* Three send buttons */
+.aia-send-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
 .aia-send-btn {
-  width: 40px;
-  height: 40px;
-  background: #1c2450;
-  border: 1px solid #2a3470;
-  border-radius: 8px;
-  color: #6080c0;
-  font-size: 18px;
+  width: 44px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 16px;
   cursor: pointer;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background .15s, color .15s;
+  transition: background .15s, opacity .15s;
+  border: 1px solid transparent;
 }
-.aia-send-btn:hover:not(:disabled) { background: #263060; color: #90b0f0; }
-.aia-send-btn:disabled { opacity: .4; cursor: not-allowed; }
+.aia-send-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* LBR — blue */
+.aia-send-lbr {
+  background: #0e1a2e;
+  border-color: #1a3a5a;
+  color: #7ec8e3;
+}
+.aia-send-lbr:hover:not(:disabled) { background: #14263e; }
+
+/* Analysis — green */
+.aia-send-analysis {
+  background: #0e1e14;
+  border-color: #1a4030;
+  color: #6ee7a0;
+}
+.aia-send-analysis:hover:not(:disabled) { background: #142a1c; }
+
+/* Council — amber */
+.aia-send-council {
+  background: #1e1208;
+  border-color: #3a2800;
+  color: #f5c87a;
+}
+.aia-send-council:hover:not(:disabled) { background: #2a1c0a; }

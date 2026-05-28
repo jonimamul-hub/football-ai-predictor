@@ -5,19 +5,18 @@ const MODES = {
   lbr: {
     icon:  '📚',
     label: 'LBR',
-    placeholder: 'Ask about signals, quality levels, learning lifecycle, pattern discovery…',
-    welcome: 'Ask about any signal — why it exists, whether its quality level seems right, what patterns are worth building, or how the learning system calibrates over time.',
   },
   analysis: {
     icon:  '🔬',
     label: 'Analysis',
-    placeholder: 'Enter a match to analyze, or ask about a prediction…',
-    welcome: 'Enter a match (e.g. "Liverpool vs Arsenal, Premier League") and ask for a BTTS or Draw analysis. Or discuss any prediction — signals applied, confidence, verdict reasoning.',
+  },
+  council: {
+    icon:  '⚖️',
+    label: 'Council',
   },
 }
 
 export default function AIAssistant() {
-  const [mode,     setMode]     = useState('analysis')  // 'lbr' | 'analysis'
   const [messages, setMessages] = useState([])
   const [input,    setInput]    = useState('')
   const [loading,  setLoading]  = useState(false)
@@ -30,18 +29,11 @@ export default function AIAssistant() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  // Clear chat when mode changes
-  function switchMode(m) {
-    setMode(m)
-    setMessages([])
-    setInput('')
-  }
-
-  async function sendMessage() {
+  async function sendMessage(selectedMode) {
     const text = input.trim()
     if (!text || loading) return
 
-    const userMsg = { id: Date.now(), role: 'user', content: text }
+    const userMsg = { id: Date.now(), role: 'user', content: text, sentWith: selectedMode }
     const history = [...messages, userMsg]
     setMessages(history)
     setInput('')
@@ -49,13 +41,36 @@ export default function AIAssistant() {
 
     try {
       const aiMessages = history.map(m => ({ role: m.role, content: m.content }))
-      const { reply }  = await api.askAssistant(aiMessages, criteria, mode)
-      setMessages(prev => [...prev, {
-        id:      Date.now() + 1,
-        role:    'assistant',
-        content: reply,
-        mode,
-      }])
+
+      if (selectedMode === 'council') {
+        // Step 1: LBR responds
+        const { reply: lbrReply } = await api.askAssistant(aiMessages, criteria, 'lbr')
+        const lbrMsg = {
+          id:   Date.now() + 1,
+          role: 'assistant',
+          content: lbrReply,
+          mode: 'lbr',
+        }
+        setMessages(prev => [...prev, lbrMsg])
+
+        // Step 2: Analysis sees LBR's response and adds its own
+        const msgsWithLbr = [...aiMessages, { role: 'assistant', content: lbrReply }]
+        const { reply: anaReply } = await api.askAssistant(msgsWithLbr, criteria, 'analysis')
+        setMessages(prev => [...prev, {
+          id:      Date.now() + 2,
+          role:    'assistant',
+          content: anaReply,
+          mode:    'analysis',
+        }])
+      } else {
+        const { reply } = await api.askAssistant(aiMessages, criteria, selectedMode)
+        setMessages(prev => [...prev, {
+          id:      Date.now() + 1,
+          role:    'assistant',
+          content: reply,
+          mode:    selectedMode,
+        }])
+      }
     } catch (e) {
       setMessages(prev => [...prev, {
         id:      Date.now() + 1,
@@ -68,24 +83,12 @@ export default function AIAssistant() {
     }
   }
 
-  const m = MODES[mode]
-
   return (
     <div className="ai-assistant">
 
-      {/* ── Mode selector ────────────────────────────────────────────── */}
+      {/* ── Context toggle ───────────────────────────────────────────── */}
       <div className="aia-modebar">
-        <div className="aia-mode-btns">
-          {Object.entries(MODES).map(([key, cfg]) => (
-            <button
-              key={key}
-              className={`aia-mode-btn${mode === key ? ' active' : ''}`}
-              onClick={() => switchMode(key)}
-            >
-              {cfg.icon} {cfg.label}
-            </button>
-          ))}
-        </div>
+        <span className="aia-modebar-hint">Select a mode to send your message:</span>
         <button className="aia-crit-btn" onClick={() => setShowCrit(v => !v)}>
           ⚙ Context
         </button>
@@ -95,17 +98,13 @@ export default function AIAssistant() {
       {showCrit && (
         <div className="aia-criteria-panel">
           <label className="aia-criteria-label">
-            Additional context — prepended to every query in this mode
+            Additional context — prepended to every query
           </label>
           <textarea
             className="aia-criteria-input"
             value={criteria}
             onChange={e => setCriteria(e.target.value)}
-            placeholder={
-              mode === 'lbr'
-                ? 'e.g. Focus on Premier League signals. Ignore stats older than 2 seasons.'
-                : 'e.g. Only consider Serie A matches. Treat BTTS signals as primary.'
-            }
+            placeholder="e.g. Focus on Premier League. Treat BTTS signals as primary."
             rows={3}
           />
         </div>
@@ -115,16 +114,28 @@ export default function AIAssistant() {
       <div className="aia-messages">
         {messages.length === 0 && (
           <div className="aia-welcome">
-            <div className="aia-welcome-icon">{m.icon}</div>
-            <div className="aia-welcome-title">
-              {m.label} Mode
+            <div className="aia-welcome-icon">🤖</div>
+            <div className="aia-welcome-title">AI Assistant</div>
+            <div className="aia-welcome-sub">
+              Type a message and choose how to send it:<br />
+              <strong>📚 LBR</strong> — signal research &amp; learning lifecycle<br />
+              <strong>🔬 Analysis</strong> — match predictions &amp; verdict reasoning<br />
+              <strong>⚖️ Council</strong> — both respond: LBR first, then Analysis
             </div>
-            <div className="aia-welcome-sub">{m.welcome}</div>
           </div>
         )}
 
         {messages.map(msg => (
           <div key={msg.id} className={`aia-msg aia-msg-${msg.role}`}>
+            {msg.role === 'user' && (
+              <div className="aia-msg-header">
+                <span className={`aia-source-badge aia-src-user-${msg.sentWith}`}>
+                  {MODES[msg.sentWith]
+                    ? `${MODES[msg.sentWith].icon} ${MODES[msg.sentWith].label}`
+                    : '💬 You'}
+                </span>
+              </div>
+            )}
             {msg.role === 'assistant' && (
               <div className="aia-msg-header">
                 <span className={`aia-source-badge aia-src-${msg.mode === 'error' ? 'error' : 'claude'}`}>
@@ -150,26 +161,44 @@ export default function AIAssistant() {
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Input ────────────────────────────────────────────────────── */}
+      {/* ── Input + send buttons ──────────────────────────────────────── */}
       <div className="aia-input-bar">
         <textarea
           className="aia-input"
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder={m.placeholder}
+          placeholder="Type your message, then choose a mode to send…"
           rows={2}
           onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage('analysis') }
           }}
         />
-        <button
-          className="aia-send-btn"
-          onClick={sendMessage}
-          disabled={loading || !input.trim()}
-          title="Send (Enter)"
-        >
-          {loading ? '⟳' : '↗'}
-        </button>
+        <div className="aia-send-btns">
+          <button
+            className="aia-send-btn aia-send-lbr"
+            onClick={() => sendMessage('lbr')}
+            disabled={loading || !input.trim()}
+            title="Send to LBR"
+          >
+            {loading ? '⟳' : '📚'}
+          </button>
+          <button
+            className="aia-send-btn aia-send-analysis"
+            onClick={() => sendMessage('analysis')}
+            disabled={loading || !input.trim()}
+            title="Send to Analysis (Enter)"
+          >
+            {loading ? '⟳' : '🔬'}
+          </button>
+          <button
+            className="aia-send-btn aia-send-council"
+            onClick={() => sendMessage('council')}
+            disabled={loading || !input.trim()}
+            title="Send to Council (LBR + Analysis)"
+          >
+            {loading ? '⟳' : '⚖️'}
+          </button>
+        </div>
       </div>
 
     </div>
