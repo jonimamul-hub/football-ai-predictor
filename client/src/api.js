@@ -48,6 +48,15 @@ export const api = {
   updatePattern: (id, data)   => patch(`/api/patterns/${id}`, data),
   deletePattern: (id)         => del(`/api/patterns/${id}`),
 
+  // ── Ollama Knowledge Base ──────────────────────────────────────────────
+  getKnowledge:    (q)             => req(`/api/ollama/knowledge${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  addKnowledge:    (data)          => post('/api/ollama/knowledge', data),
+  updateKnowledge: (id, data)      => patch(`/api/ollama/knowledge/${id}`, data),
+  deleteKnowledge: (id)            => del(`/api/ollama/knowledge/${id}`),
+
+  // ── AI Assistant ───────────────────────────────────────────────────────
+  askAssistant:    (messages, ctx) => post('/api/assistant', { messages, context: ctx || '' }),
+
   // ── History ────────────────────────────────────────────────────────────
   getHistory:    (type)       => req(`/api/history?type=${type}`),
   addHistory:    (data)       => post('/api/history', data),

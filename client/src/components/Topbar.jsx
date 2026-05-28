@@ -87,6 +87,10 @@ export default function Topbar({
           className={"nav-btn " + (mainTab === 'live' && !showLeagues ? 'active-live' : '')}
           onClick={() => { setMainTab('live'); setShowLeagues(false) }}
         >🔴 Live</button>
+        <button
+          className={"nav-btn " + (mainTab === 'assistant' && !showLeagues ? 'active-ai' : '')}
+          onClick={() => { setMainTab('assistant'); setShowLeagues(false) }}
+        >🤖 AI</button>
       </nav>
 
       {/* ── Right: leagues ─────────────────────────────────────────────── */}

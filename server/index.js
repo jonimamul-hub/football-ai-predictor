@@ -8,6 +8,7 @@ const { searchMatches } = require('./ai/search');
 const { runLBR }        = require('./ai/lbr');
 const { analyzeBTTS, selectTopBTTS } = require('./ai/btts');
 const { analyzeDraw, selectTopDraw } = require('./ai/draw');
+const { runAssistant }               = require('./ai/assistant');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -119,6 +120,15 @@ async function initDB() {
       verdict     VARCHAR(20),
       created_at  TIMESTAMP DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS ollama_knowledge (
+      id         SERIAL PRIMARY KEY,
+      topic      TEXT         NOT NULL,
+      content    TEXT         NOT NULL,
+      source     VARCHAR(20)  DEFAULT 'claude',
+      approved   BOOLEAN      DEFAULT FALSE,
+      created_at TIMESTAMP    DEFAULT NOW()
+    );
   `);
 
   // Idempotent column additions for existing deployments
@@ -138,6 +148,7 @@ async function initDB() {
     `ALTER TABLE history ADD COLUMN IF NOT EXISTS matched_signals  JSONB   DEFAULT '[]'`,
     `ALTER TABLE history ADD COLUMN IF NOT EXISTS confidence       INTEGER`,
     `CREATE TABLE IF NOT EXISTS learning_log (id SERIAL PRIMARY KEY, type VARCHAR(10), signal_name VARCHAR(200), old_level VARCHAR(20), new_level VARCHAR(20), reason VARCHAR(20), match_name VARCHAR(200), match_date VARCHAR(20), verdict VARCHAR(20), created_at TIMESTAMP DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS ollama_knowledge (id SERIAL PRIMARY KEY, topic TEXT NOT NULL, content TEXT NOT NULL, source VARCHAR(20) DEFAULT 'claude', approved BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())`,
   ];
   for (const sql of colMigrations) {
     await pool.query(sql);
@@ -907,6 +918,98 @@ async function getSignals(type) {
     stats:   rows.filter(r => r.category === 'stat')
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  OLLAMA KNOWLEDGE BASE
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/ollama/knowledge?q=optional_search_text
+app.get('/api/ollama/knowledge', async (req, res) => {
+  const { q } = req.query;
+  try {
+    const { rows } = q
+      ? await pool.query(
+          `SELECT * FROM ollama_knowledge
+           WHERE topic ILIKE $1 OR content ILIKE $1
+           ORDER BY approved DESC, created_at DESC LIMIT 20`,
+          [`%${q}%`]
+        )
+      : await pool.query(
+          `SELECT * FROM ollama_knowledge ORDER BY approved DESC, created_at DESC LIMIT 50`
+        );
+    res.json({ items: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ollama/knowledge  body: { topic, content, source }
+app.post('/api/ollama/knowledge', async (req, res) => {
+  const { topic, content, source } = req.body;
+  if (!topic || !content) return res.status(400).json({ error: 'topic and content required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO ollama_knowledge (topic, content, source)
+       VALUES ($1,$2,$3) RETURNING *`,
+      [topic, content, source || 'claude']
+    );
+    res.json({ success: true, item: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/ollama/knowledge/:id  body: { approved }
+app.patch('/api/ollama/knowledge/:id', async (req, res) => {
+  const { approved } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE ollama_knowledge SET approved=$1 WHERE id=$2 RETURNING *`,
+      [approved, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true, item: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/ollama/knowledge/:id
+app.delete('/api/ollama/knowledge/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM ollama_knowledge WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AI ASSISTANT  (Claude conversational endpoint — Ollama fallback)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// POST /api/assistant  body: { messages: [{role,content}], context? }
+app.post('/api/assistant', async (req, res) => {
+  const { messages, context } = req.body;
+  if (!messages?.length) return res.status(400).json({ error: 'messages required' });
+  try {
+    const signals = await getSignals('btts')
+      .then(b => b.factors.concat(b.stats).map(s => ({ ...s, type: 'btts' })))
+      .catch(() => []);
+    const drawSigs = await getSignals('draw')
+      .then(d => d.factors.concat(d.stats).map(s => ({ ...s, type: 'draw' })))
+      .catch(() => []);
+
+    const reply = await runAssistant(messages, {
+      context: context || '',
+      signals: [...signals, ...drawSigs],
+    });
+    res.json({ reply });
+  } catch (err) {
+    console.error('Assistant error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  STATIC CLIENT BUILD  (must be LAST, after all /api routes)

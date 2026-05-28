@@ -3,6 +3,7 @@ import Topbar       from './components/Topbar'
 import BTTSTab      from './components/BTTSTab'
 import DrawTab      from './components/DrawTab'
 import LeaguesPanel from './components/LeaguesPanel'
+import AIAssistant  from './components/AIAssistant'
 import { api }      from './api'
 import './App.css'
 
@@ -69,6 +70,9 @@ export default function App() {
         )}
         {!showLeagues && mainTab === 'live' && (
           <div className="coming-soon">🔴 Live predictions — coming soon</div>
+        )}
+        {!showLeagues && mainTab === 'assistant' && (
+          <AIAssistant />
         )}
       </main>
     </div>
