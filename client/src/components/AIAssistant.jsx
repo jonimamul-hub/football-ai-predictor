@@ -4,7 +4,7 @@ import { checkOllamaAvailable, askOllama } from '../ollama_agent'
 
 export default function AIAssistant() {
   // ── Ollama status ─────────────────────────────────────────────────────
-  const [ollamaStatus,  setOllamaStatus]  = useState('checking') // checking|online|offline
+  const [ollamaStatus,  setOllamaStatus]  = useState('checking') // checking|online|offline|remote
   const [ollamaModels,  setOllamaModels]  = useState([])
   const [selectedModel, setSelectedModel] = useState('')
 
@@ -33,8 +33,8 @@ export default function AIAssistant() {
   // ── Ollama ────────────────────────────────────────────────────────────
   async function checkOllama() {
     setOllamaStatus('checking')
-    const { available, models } = await checkOllamaAvailable()
-    setOllamaStatus(available ? 'online' : 'offline')
+    const { available, models, reason } = await checkOllamaAvailable()
+    setOllamaStatus(available ? 'online' : (reason || 'offline'))
     setOllamaModels(models)
     if (models.length > 0) setSelectedModel(models[0])
   }
@@ -152,8 +152,8 @@ export default function AIAssistant() {
   }
 
   // ── Status helpers ────────────────────────────────────────────────────
-  const dotColor    = { checking: '#888', online: '#4ade80', offline: '#f87171' }[ollamaStatus]
-  const statusLabel = { checking: 'Checking…', online: 'Online',  offline: 'Offline'  }[ollamaStatus]
+  const dotColor    = { checking: '#888', online: '#4ade80', offline: '#f87171', remote: '#f5a623' }[ollamaStatus] || '#888'
+  const statusLabel = { checking: 'Checking…', online: 'Online', offline: 'Offline', remote: 'Local only' }[ollamaStatus] || '—'
 
   return (
     <div className="ai-assistant">
@@ -186,10 +186,16 @@ export default function AIAssistant() {
       </div>
 
       {/* ── Ollama setup note ─────────────────────────────────────────── */}
+      {ollamaStatus === 'remote' && (
+        <div className="aia-setup-note">
+          ℹ Ollama is only available when accessing the app from localhost.
+          On the Railway URL the browser origin is blocked by Ollama's CORS policy — Claude will answer instead.
+        </div>
+      )}
       {ollamaStatus === 'offline' && (
         <div className="aia-setup-note">
-          ⚠ Ollama not detected at localhost:11434. Start it with CORS enabled:&nbsp;
-          <code>OLLAMA_ORIGINS=* ollama serve</code> — Claude will answer in the meantime.
+          ⚠ Ollama not detected at localhost:11434. Start it with:&nbsp;
+          <code>OLLAMA_ORIGINS=http://localhost:5173 ollama serve</code> — Claude will answer in the meantime.
         </div>
       )}
 
@@ -241,7 +247,9 @@ export default function AIAssistant() {
               Ask about signals, patterns, predictions, or specific matches.
               {ollamaStatus === 'online'
                 ? ` Ollama (${selectedModel}) answers first — Claude as fallback.`
-                : ' Claude will answer (Ollama offline).'}
+                : ollamaStatus === 'remote'
+                  ? ' Claude will answer (Ollama only works on localhost).'
+                  : ' Claude will answer (Ollama offline).'}
               <br />Approved knowledge is automatically fed to Ollama as context.
             </div>
           </div>
