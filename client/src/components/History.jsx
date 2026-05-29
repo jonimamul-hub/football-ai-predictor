@@ -182,7 +182,11 @@ export default function History({ type }) {
                 <div className="hist-meta">{r.league} · {r.date}</div>
               </div>
 
-              <span className={"src-badge " + (r.src === 'ANA' ? 'src-ana' : 'src-rec')}>{r.src}</span>
+              <span className={
+                "src-badge " +
+                (r.src === 'ANA'  ? 'src-ana'  :
+                 r.src === 'LIVE' ? 'src-live' : 'src-rec')
+              }>{r.src}</span>
               <span className={"badge " + (r.verdict === 'YES' ? 'badge-yes' : r.verdict === 'DRAW' ? 'badge-draw' : 'badge-no')}>
                 {r.verdict}
               </span>

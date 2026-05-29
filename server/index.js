@@ -341,8 +341,9 @@ async function runLBRForLeague(league) {
 
     for (const f of (data.btts?.factors || [])) await upsertSignal('btts', 'factor', f);
     for (const s of (data.btts?.stats   || [])) await upsertSignal('btts', 'stat',   s);
-    for (const f of (data.draw?.factors || [])) await upsertSignal('draw', 'factor', f);
-    for (const s of (data.draw?.stats   || [])) await upsertSignal('draw', 'stat',   s);
+    // Draw system paused — skip Draw signal generation from LBR
+    // for (const f of (data.draw?.factors || [])) await upsertSignal('draw', 'factor', f);
+    // for (const s of (data.draw?.stats   || [])) await upsertSignal('draw', 'stat',   s);
 
     // Count how many signals now reference this league
     const { rows: sc } = await pool.query(
@@ -587,13 +588,14 @@ app.post('/api/search', async (req, res) => {
 //  AI — ANALYSIS (single match)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// POST /api/analyze/btts  body: { match, league, date }
+// POST /api/analyze/btts  body: { match, league, date, liveMinute?, liveScore? }
 app.post('/api/analyze/btts', async (req, res) => {
-  const { match, league, date } = req.body;
+  const { match, league, date, liveMinute, liveScore } = req.body;
   if (!match) return res.status(400).json({ error: 'match required' });
   try {
     const signals  = await getSignals('btts');
-    const result   = await analyzeBTTS(match, league || '', date || '', signals);
+    const liveCtx  = (liveMinute != null || liveScore) ? { minute: liveMinute, score: liveScore } : null;
+    const result   = await analyzeBTTS(match, league || '', date || '', signals, liveCtx);
     res.json(result);
   } catch (err) {
     console.error('BTTS analyze error:', err.message);

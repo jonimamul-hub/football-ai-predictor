@@ -101,6 +101,14 @@
   border-color: #5c4612;
 }
 
+/* Paused indicator inside Draw nav button */
+.nav-paused-badge {
+  font-size: 10px;
+  opacity: .7;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
 .active-live {
   color: #f87171;
   background: #261010;
@@ -503,8 +511,9 @@
   flex-shrink: 0;
 }
 
-.src-rec { background: #142040; color: #60a5fa; }
-.src-ana { background: #1e1040; color: #a78bfa; }
+.src-rec  { background: #142040; color: #60a5fa; }
+.src-ana  { background: #1e1040; color: #a78bfa; }
+.src-live { background: #261010; color: #f87171; border: 1px solid #5c1a1a; }
 
 .ck-btn {
   width: 28px;
@@ -1648,3 +1657,92 @@
 }
 .auth-btn:hover:not(:disabled) { background: #263060; }
 .auth-btn:disabled              { opacity: .4; cursor: not-allowed; }
+
+/* ─────────────────────────────────────────────
+   DRAW PAUSED
+───────────────────────────────────────────── */
+.draw-paused-banner {
+  background: #241c08;
+  border-bottom: 1px solid #5c4612;
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paused-placeholder {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #6b6f40;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ─────────────────────────────────────────────
+   LIVE TAB
+───────────────────────────────────────────── */
+.live-tab-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.live-indicator-pill {
+  background: #261010;
+  border: 1px solid #5c1a1a;
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: .04em;
+  flex-shrink: 0;
+}
+
+.live-tab-sub {
+  font-size: 12px;
+  color: #50586a;
+  line-height: 1.3;
+}
+
+/* Minute + Score side-by-side */
+.live-context-row {
+  display: flex;
+  gap: 12px;
+}
+.live-context-field { flex: 1; }
+
+.live-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.live-input-wrap input { padding-right: 22px; width: 100%; box-sizing: border-box; }
+.live-input-suffix {
+  position: absolute;
+  right: 9px;
+  color: #6b6f85;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.live-min-input   { width: 100%; }
+.live-score-input { width: 100%; }
+
+.live-analyze-btn { margin-top: 8px; }
+
+/* Live chips on result card */
+.live-chip-min,
+.live-chip-score {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.live-chip-min   { background: #1a1208; color: #f5a623; border: 1px solid #3a2800; }
+.live-chip-score { background: #121a14; color: #4ade80; border: 1px solid #1a4028; }

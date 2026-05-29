@@ -39,15 +39,22 @@ Return ONLY valid JSON — no markdown, no extra text.`;
 }
 
 // ─── Single match analysis (Analysis mode) ─────────────────────────────────
-async function analyzeBTTS(match, league, date, signals) {
+// liveContext: { minute: 67, score: '1-0' } — optional; when provided, shifts to live-aware reasoning
+async function analyzeBTTS(match, league, date, signals, liveContext = null) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const prompt = `[ANALYSIS MODE] Always analyze — never skip.
+  const liveBlock = liveContext
+    ? `\n⚡ LIVE MATCH CONTEXT\n  Minute: ${liveContext.minute ?? '?'}'\n  Current score: ${liveContext.score ?? '?-?'}\n\nGiven this live context AND pre-match signals, is BTTS still likely?\nConsider: time remaining, current score dynamics, whether BOTH teams still need to score, momentum shifts.\n`
+    : '';
+
+  const mode  = liveContext ? 'LIVE ANALYSIS' : 'ANALYSIS';
+
+  const prompt = `[${mode} MODE] Always analyze — never skip.
 
 Match : ${match}
 League: ${league}
 Date  : ${date}
-
+${liveBlock}
 Apply every available signal to this specific match. Consider both teams' current form, defensive records, tactical setup, and motivation context.
 
 Return JSON:
@@ -64,7 +71,7 @@ Return JSON:
     model:      'claude-sonnet-4-5-20250929',
     max_tokens: 2048,
     system:     buildSystemPrompt(signals),
-    messages:   [{ role: 'user', content: prompt }]
+    messages:   [{ role: 'user', content: prompt }],
   });
 
   const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');

@@ -41,7 +41,8 @@ export const api = {
   search:        (date, leagues, timezone) => post('/api/search', { date, leagues, timezone }),
 
   // ── AI Analysis (single match) ─────────────────────────────────────────
-  analyzeBTTS:   (match, league, date) => post('/api/analyze/btts', { match, league, date }),
+  analyzeBTTS:   (match, league, date, liveMinute, liveScore) =>
+    post('/api/analyze/btts', { match, league, date, liveMinute, liveScore }),
   analyzeDraw:   (match, league, date) => post('/api/analyze/draw', { match, league, date }),
 
   // ── AI Recommendations (multi-match) ───────────────────────────────────

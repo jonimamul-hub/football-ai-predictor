@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import Topbar       from './components/Topbar'
 import BTTSTab      from './components/BTTSTab'
 import DrawTab      from './components/DrawTab'
+import LiveTab      from './components/LiveTab'
 import LeaguesPanel from './components/LeaguesPanel'
 import AIAssistant  from './components/AIAssistant'
 import AuthGate     from './components/AuthGate'
@@ -71,7 +72,7 @@ export default function App() {
           <DrawTab leagues={leagues} searchDate={searchDate} searchTz={searchTz} />
         )}
         {!showLeagues && mainTab === 'live' && (
-          <div className="coming-soon">🔴 Live predictions — coming soon</div>
+          <LiveTab searchDate={searchDate} />
         )}
         {!showLeagues && mainTab === 'assistant' && (
           <AIAssistant />

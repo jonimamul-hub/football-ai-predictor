@@ -82,7 +82,7 @@ export default function Topbar({
         <button
           className={"nav-btn " + (mainTab === 'draw' && !showLeagues ? 'active-draw' : '')}
           onClick={() => { setMainTab('draw'); setShowLeagues(false) }}
-        >🟡 Draw</button>
+        >🟡 Draw <span className="nav-paused-badge">⏸</span></button>
         <button
           className={"nav-btn " + (mainTab === 'live' && !showLeagues ? 'active-live' : '')}
           onClick={() => { setMainTab('live'); setShowLeagues(false) }}
