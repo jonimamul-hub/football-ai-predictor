@@ -16,6 +16,12 @@ SIGNAL TYPES:
 • Statistics — measurable thresholds explained by WHY
   Example: "BTTS ≥ 68% when both sides top-6 — because both play expansive football and neither parks the bus"
 
+LIVE SIGNAL TYPES (in-game patterns for the 'live' key):
+• Factors — in-game WHY patterns (what happens DURING matches — momentum, tactical shifts, desperation)
+  Example: "Teams trailing at 60' in this league push 2 defenders forward — creating transitions for both sides"
+• Statistics — in-game measurable thresholds
+  Example: "75% of matches in this league that are 0-0 at HT see at least 2 goals in the second half"
+
 SIGNAL QUALITY — assign based on strength of evidence:
 • Ideal   — pattern confirmed 2+ seasons, >70% hit rate, clear WHY mechanism
 • Good    — solid pattern 55–70%, consistent evidence, understood WHY
@@ -42,6 +48,10 @@ OUTPUT — when you have enough WHY-focused evidence, output ONLY this JSON (no 
   "draw": {
     "factors": [{"name": "specific WHY factor for draws", "level": "Ideal|Good|Weak|Dormant", "note": "WHY explanation"}],
     "stats":   [{"name": "specific measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "WHY this predicts draws"}]
+  },
+  "live": {
+    "factors": [{"name": "specific in-game WHY pattern", "level": "Ideal|Good|Weak|Dormant", "note": "WHY this in-game pattern affects BTTS likelihood"}],
+    "stats":   [{"name": "specific in-game measurable threshold", "level": "Ideal|Good|Weak|Dormant", "note": "WHY this in-game stat predicts BTTS outcome"}]
   },
   "fixture_query": "exact search phrase that would reliably find upcoming fixtures/matchday schedule for this league — e.g. 'Kazakhstan Premier League round fixtures 2025' or 'Qazaqstan Premer Ligasy matchday schedule'. Use the league's canonical web name."
 }
@@ -168,7 +178,7 @@ function parseLBR(text) {
   for (const raw of candidates) {
     try {
       const data = JSON.parse(raw);
-      if (data.btts && data.draw) return normalise(data);
+      if (data.btts) return normalise(data);   // draw + live are optional but normalised if present
     } catch { /* try next */ }
   }
   return null;
@@ -176,7 +186,7 @@ function parseLBR(text) {
 
 
 function normalise(data) {
-  for (const outcome of ['btts', 'draw']) {
+  for (const outcome of ['btts', 'draw', 'live']) {
     if (!data[outcome] || typeof data[outcome] !== 'object') {
       data[outcome] = { factors: [], stats: [] };
     }

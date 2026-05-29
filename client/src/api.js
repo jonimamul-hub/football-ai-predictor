@@ -44,6 +44,8 @@ export const api = {
   analyzeBTTS:   (match, league, date, liveMinute, liveScore) =>
     post('/api/analyze/btts', { match, league, date, liveMinute, liveScore }),
   analyzeDraw:   (match, league, date) => post('/api/analyze/draw', { match, league, date }),
+  analyzeLive:   (match, league, date, liveMinute, liveScore) =>
+    post('/api/analyze/live', { match, league, date, liveMinute, liveScore }),
 
   // ── AI Recommendations (multi-match) ───────────────────────────────────
   recommendBTTS: (matches)    => post('/api/recommend/btts', { matches }),

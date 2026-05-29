@@ -1,8 +1,12 @@
 import { useState } from 'react'
-import { api } from '../api'
+import SecNav     from './SecNav'
+import History    from './History'
+import DataConfig from './DataConfig'
+import { api }    from '../api'
 import { badgeClass, SignalRow } from '../utils'
 
-export default function LiveTab({ searchDate = '' }) {
+// ── Live Analysis form ────────────────────────────────────────────────────────
+function LiveAnalysis({ searchDate = '' }) {
   const [match,  setMatch]  = useState('')
   const [league, setLeague] = useState('')
   const [minute, setMinute] = useState('')
@@ -11,7 +15,6 @@ export default function LiveTab({ searchDate = '' }) {
   const [result, setResult] = useState(null)
   const [error,  setError]  = useState('')
 
-  // Date from the global header (same logic as Analysis.jsx)
   const displayDate = (() => {
     if (!searchDate) return new Date().toLocaleDateString('en-GB').replace(/\//g, '.')
     const parts = searchDate.split('-')
@@ -25,7 +28,7 @@ export default function LiveTab({ searchDate = '' }) {
     try {
       const liveMinute = minute !== '' ? parseInt(minute, 10) : null
       const liveScore  = score.trim() || null
-      const data = await api.analyzeBTTS(
+      const data = await api.analyzeLive(
         match.trim(), league.trim(), displayDate, liveMinute, liveScore
       )
       setResult({
@@ -52,7 +55,7 @@ export default function LiveTab({ searchDate = '' }) {
     if (!result) return
     try {
       await api.addHistory({
-        type:            'btts',
+        type:            'live',
         match_name:      result.match,
         league:          result.league,
         match_date:      result.date,
@@ -76,12 +79,12 @@ export default function LiveTab({ searchDate = '' }) {
   return (
     <div className="card">
 
-      {/* ── FORM ───────────────────────────────────────────────────────── */}
+      {/* ── FORM ─────────────────────────────────────────────────────────── */}
       {stage === 'form' && (
         <div className="pad">
           <div className="live-tab-header">
             <span className="live-indicator-pill">🔴 LIVE</span>
-            <span className="live-tab-sub">In-game BTTS Analysis · Uses pre-match signals + current context</span>
+            <span className="live-tab-sub">In-game BTTS Analysis using Live signals</span>
           </div>
 
           <div className="form-group">
@@ -137,7 +140,7 @@ export default function LiveTab({ searchDate = '' }) {
         </div>
       )}
 
-      {/* ── LOADING ────────────────────────────────────────────────────── */}
+      {/* ── LOADING ──────────────────────────────────────────────────────── */}
       {stage === 'loading' && (
         <div className="loading-state">
           <div className="spinner">⟳</div>
@@ -145,7 +148,7 @@ export default function LiveTab({ searchDate = '' }) {
         </div>
       )}
 
-      {/* ── ERROR ──────────────────────────────────────────────────────── */}
+      {/* ── ERROR ────────────────────────────────────────────────────────── */}
       {stage === 'error' && (
         <div className="loading-state">
           <p style={{ color: '#f87171' }}>⚠ {error}</p>
@@ -153,7 +156,7 @@ export default function LiveTab({ searchDate = '' }) {
         </div>
       )}
 
-      {/* ── RESULT ─────────────────────────────────────────────────────── */}
+      {/* ── RESULT ───────────────────────────────────────────────────────── */}
       {stage === 'result' && result && (
         <div>
           <div className="match-head" style={{ cursor: 'default' }}>
@@ -161,24 +164,14 @@ export default function LiveTab({ searchDate = '' }) {
               <div className="match-name">{result.match}</div>
               <div className="match-meta">{result.league}</div>
             </div>
-
-            {/* Live context chips */}
-            {result.minute != null && (
-              <span className="live-chip-min">{result.minute}'</span>
-            )}
-            {result.score && (
-              <span className="live-chip-score">{result.score}</span>
-            )}
-
+            {result.minute != null && <span className="live-chip-min">{result.minute}'</span>}
+            {result.score  && <span className="live-chip-score">{result.score}</span>}
             <span className="match-date">{result.date}</span>
-            {result.confidence != null && (
-              <span className="conf-badge">{result.confidence}%</span>
-            )}
+            {result.confidence != null && <span className="conf-badge">{result.confidence}%</span>}
             <span className={`badge ${badgeClass(result.verdict)}`}>{result.verdict}</span>
           </div>
 
           <div className="match-detail pad">
-            {/* Signals */}
             {showAll ? (
               <>
                 <div className="detail-label">📌 Signals</div>
@@ -186,29 +179,16 @@ export default function LiveTab({ searchDate = '' }) {
               </>
             ) : (
               <>
-                {factors.length > 0 && (
-                  <>
-                    <div className="detail-label">📌 Factors</div>
-                    {factors.map((s, i) => <SignalRow key={i} signal={s} />)}
-                  </>
-                )}
-                {stats.length > 0 && (
-                  <>
-                    <div className="detail-label">📊 Statistics</div>
-                    {stats.map((s, i) => <SignalRow key={i} signal={s} />)}
-                  </>
-                )}
+                {factors.length > 0 && (<><div className="detail-label">📌 Factors</div>{factors.map((s, i) => <SignalRow key={i} signal={s} />)}</>)}
+                {stats.length > 0   && (<><div className="detail-label">📊 Statistics</div>{stats.map((s, i) => <SignalRow key={i} signal={s} />)}</>)}
               </>
             )}
-
-            {/* Reasoning */}
             {result.reasoning && (
               <>
                 <div className="detail-label">🧠 Reasoning</div>
                 <p className="reasoning-text">{result.reasoning}</p>
               </>
             )}
-
             <div className="detail-actions">
               <button className="btn-secondary" onClick={reset}>← New Analysis</button>
               <button className="btn-primary" onClick={saveToHistory}>↓ Move to History</button>
@@ -216,6 +196,21 @@ export default function LiveTab({ searchDate = '' }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Tab shell ────────────────────────────────────────────────────────────────
+export default function LiveTab({ searchDate = '' }) {
+  const [sec, setSec] = useState('analysis')
+  const sections = ['analysis', 'history', 'data config']
+
+  return (
+    <div>
+      <SecNav sections={sections} active={sec} setActive={setSec} />
+      {sec === 'analysis'    && <LiveAnalysis searchDate={searchDate} />}
+      {sec === 'history'     && <History      type="live" />}
+      {sec === 'data config' && <DataConfig   type="live" />}
     </div>
   )
 }

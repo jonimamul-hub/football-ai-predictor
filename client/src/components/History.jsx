@@ -207,7 +207,7 @@ export default function History({ type }) {
                         const parts = editScore.trim().split('-').map(Number)
                         const h = parts[0], a = parts[1]
                         const win = (!isNaN(h) && !isNaN(a))
-                          ? (type === 'btts' ? (h > 0 && a > 0) : (h === a))
+                          ? ((type === 'btts' || type === 'live') ? (h > 0 && a > 0) : (h === a))
                           : null
                         saveEdit(r.id, win === true ? 'win' : win === false ? 'lose' : 'pending')
                       }

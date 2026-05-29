@@ -9,6 +9,7 @@ const { searchMatches } = require('./ai/search');
 const { runLBR }        = require('./ai/lbr');
 const { analyzeBTTS, selectTopBTTS } = require('./ai/btts');
 const { analyzeDraw, selectTopDraw } = require('./ai/draw');
+const { analyzeLive }                = require('./ai/live');
 const { runAssistant }               = require('./ai/assistant');
 
 const app  = express();
@@ -344,6 +345,8 @@ async function runLBRForLeague(league) {
     // Draw system paused — skip Draw signal generation from LBR
     // for (const f of (data.draw?.factors || [])) await upsertSignal('draw', 'factor', f);
     // for (const s of (data.draw?.stats   || [])) await upsertSignal('draw', 'stat',   s);
+    for (const f of (data.live?.factors || [])) await upsertSignal('live', 'factor', f);
+    for (const s of (data.live?.stats   || [])) await upsertSignal('live', 'stat',   s);
 
     // Count how many signals now reference this league
     const { rows: sc } = await pool.query(
@@ -603,6 +606,21 @@ app.post('/api/analyze/btts', async (req, res) => {
   }
 });
 
+// POST /api/analyze/live  body: { match, league, date, liveMinute?, liveScore? }
+app.post('/api/analyze/live', async (req, res) => {
+  const { match, league, date, liveMinute, liveScore } = req.body;
+  if (!match) return res.status(400).json({ error: 'match required' });
+  try {
+    const signals  = await getSignals('live');
+    const liveCtx  = { minute: liveMinute, score: liveScore };
+    const result   = await analyzeLive(match, league || '', date || '', signals, liveCtx);
+    res.json(result);
+  } catch (err) {
+    console.error('Live analyze error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/analyze/draw  body: { match, league, date }
 app.post('/api/analyze/draw', async (req, res) => {
   const { match, league, date } = req.body;
@@ -756,7 +774,7 @@ app.post('/api/history/:id/check', async (req, res) => {
     const score   = found.score;
     const [h, a]  = score.split('-').map(Number);
     const win     = (!isNaN(h) && !isNaN(a))
-      ? (entry.type === 'btts' ? (h > 0 && a > 0) : (h === a))
+      ? ((entry.type === 'btts' || entry.type === 'live') ? (h > 0 && a > 0) : (h === a))
       : null;
     const status  = win === true ? 'win' : win === false ? 'lose' : 'pending';
 
