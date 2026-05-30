@@ -723,6 +723,7 @@ app.patch('/api/history/:id', async (req, res) => {
     );
     res.json({ success: true, item: rows[0] });
     if (status === 'win' || status === 'lose') {
+      console.log(`[learning] PATCH /api/history/${req.params.id} → triggering runLearning (status=${status})`);
       runLearning(req.params.id);
     }
   } catch (err) {
@@ -781,6 +782,7 @@ app.post('/api/history/:id/check', async (req, res) => {
     await pool.query('UPDATE history SET score=$1, status=$2 WHERE id=$3', [score, status, entry.id]);
     res.json({ success: true, score, status });
     if (status === 'win' || status === 'lose') {
+      console.log(`[learning] CHECK /api/history/${req.params.id}/check → triggering runLearning (status=${status})`);
       runLearning(req.params.id);
     }
   } catch (err) {
@@ -886,57 +888,92 @@ function levelDown(level) {
 }
 
 async function runLearning(historyId) {
+  console.log(`[learning] ▶ runLearning START — historyId=${historyId}`);
   try {
+    // ── 1. Fetch history entry ──────────────────────────────────────────────
     const { rows } = await pool.query('SELECT * FROM history WHERE id=$1', [historyId]);
-    if (!rows.length) return;
+    if (!rows.length) {
+      console.log(`[learning] ABORT — no history row found for id=${historyId}`);
+      return;
+    }
     const entry = rows[0];
-
     const { status, type, match_name, match_date, verdict, matched_signals } = entry;
-    if (status !== 'win' && status !== 'lose') return;
+    console.log(`[learning] Entry: "${match_name}" | type=${type} | status=${status} | verdict=${verdict} | date=${match_date}`);
 
-    const signals = Array.isArray(matched_signals) ? matched_signals : [];
+    // ── 2. Guard: must be win or lose ───────────────────────────────────────
+    if (status !== 'win' && status !== 'lose') {
+      console.log(`[learning] ABORT — status="${status}" is not win/lose`);
+      return;
+    }
+
+    // ── 3. Extract matched_signals ──────────────────────────────────────────
+    const rawSignals = entry.matched_signals;
+    console.log(`[learning] matched_signals raw type: ${typeof rawSignals} | isArray: ${Array.isArray(rawSignals)} | value: ${JSON.stringify(rawSignals)}`);
+    const signals = Array.isArray(rawSignals) ? rawSignals : [];
+    console.log(`[learning] Signals to process: ${signals.length} — names: [${signals.map(s => s.name).join(', ')}]`);
+
     if (!signals.length) {
-      console.log(`⚠ Learning skipped for "${match_name}" — no matched_signals saved`);
+      console.log(`[learning] SKIP "${match_name}" — matched_signals is empty (prediction may have been saved without signal data)`);
       return;
     }
 
     const isWin = status === 'win';
+    console.log(`[learning] Direction: ${isWin ? '📈 levelUp (win)' : '📉 levelDown (lose)'}`);
+
+    // ── 4. Process each signal ──────────────────────────────────────────────
+    let updated = 0, skipped = 0, unchanged = 0;
 
     for (const sig of signals) {
-      if (!sig.name) continue;
+      if (!sig.name) {
+        console.log(`[learning] ⚠ Skipping signal entry with no name:`, JSON.stringify(sig));
+        skipped++;
+        continue;
+      }
 
-      // Look up current level in DB (match by type + name, any category)
+      // Lookup in signals table
       const { rows: sigRows } = await pool.query(
         'SELECT id, level FROM signals WHERE type=$1 AND name=$2 LIMIT 1',
         [type, sig.name]
       );
+
       if (!sigRows.length) {
-        console.log(`⚠ Learning: signal "${sig.name}" not found in DB — skipping`);
+        console.log(`[learning] ⚠ Signal NOT in DB — type="${type}" name="${sig.name}" — skipping`);
+        skipped++;
         continue;
       }
 
       const { id: sigId, level: oldLevel } = sigRows[0];
       const newLevel = isWin ? levelUp(oldLevel) : levelDown(oldLevel);
+      console.log(`[learning] Signal "${sig.name}" (id=${sigId}): ${oldLevel} → ${newLevel}`);
 
       if (newLevel === oldLevel) {
-        console.log(`— Signal "${sig.name}" already at ${oldLevel} — no change`);
+        console.log(`[learning] — Already at ${oldLevel} (${isWin ? 'Ideal ceiling' : 'Dormant floor'}) — no DB update`);
+        unchanged++;
         continue;
       }
 
+      // ── 5. Update signals table ───────────────────────────────────────────
       await pool.query('UPDATE signals SET level=$1 WHERE id=$2', [newLevel, sigId]);
+      console.log(`[learning] ✓ signals table updated: id=${sigId} "${sig.name}" ${oldLevel}→${newLevel}`);
 
+      // ── 6. Write to learning_log ──────────────────────────────────────────
       await pool.query(
         `INSERT INTO learning_log (type, signal_name, old_level, new_level, reason, match_name, match_date, verdict)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [type, sig.name, oldLevel, newLevel, isWin ? 'win' : 'lose', match_name, match_date, verdict]
       );
+      console.log(`[learning] ✓ learning_log written: "${sig.name}" ${oldLevel}→${newLevel} reason=${isWin ? 'win' : 'lose'}`);
 
       const arrow  = isWin ? '📈' : '📉';
       const action = isWin ? 'strengthened' : 'weakened';
       console.log(`${arrow} Signal ${action}: "${sig.name}" ${oldLevel}→${newLevel} (${match_name})`);
+      updated++;
     }
+
+    console.log(`[learning] ✅ DONE — ${updated} updated, ${unchanged} at floor/ceiling, ${skipped} not found in DB`);
   } catch (err) {
-    console.error('runLearning error:', err.message);
+    console.error(`[learning] ❌ ERROR in runLearning(historyId=${historyId}):`, err.message);
+    console.error(err.stack);
   }
 }
 
