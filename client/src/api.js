@@ -66,6 +66,9 @@ export const api = {
   // ── AI Assistant ───────────────────────────────────────────────────────
   askAssistant:    (messages, ctx, mode) => post('/api/assistant', { messages, context: ctx || '', mode: mode || 'analysis' }),
 
+  // ── Learning ───────────────────────────────────────────────────────────
+  rerunLearning: () => req('/api/learning/rerun'),
+
   // ── History ────────────────────────────────────────────────────────────
   getHistory:    (type)       => req(`/api/history?type=${type}`),
   addHistory:    (data)       => post('/api/history', data),

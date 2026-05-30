@@ -147,8 +147,9 @@ async function initDB() {
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS found_via_detail TEXT    DEFAULT NULL`,
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS competition_id   INTEGER DEFAULT NULL`,
     `ALTER TABLE leagues ADD COLUMN IF NOT EXISTS season_num       INTEGER DEFAULT NULL`,
-    `ALTER TABLE history ADD COLUMN IF NOT EXISTS matched_signals  JSONB   DEFAULT '[]'`,
-    `ALTER TABLE history ADD COLUMN IF NOT EXISTS confidence       INTEGER`,
+    `ALTER TABLE history ADD COLUMN IF NOT EXISTS matched_signals       JSONB    DEFAULT '[]'`,
+    `ALTER TABLE history ADD COLUMN IF NOT EXISTS confidence            INTEGER`,
+    `ALTER TABLE history ADD COLUMN IF NOT EXISTS learning_processed    BOOLEAN  DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS learning_log (id SERIAL PRIMARY KEY, type VARCHAR(10), signal_name VARCHAR(200), old_level VARCHAR(20), new_level VARCHAR(20), reason VARCHAR(20), match_name VARCHAR(200), match_date VARCHAR(20), verdict VARCHAR(20), created_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE IF NOT EXISTS ollama_knowledge (id SERIAL PRIMARY KEY, topic TEXT NOT NULL, content TEXT NOT NULL, source VARCHAR(20) DEFAULT 'claude', approved BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())`,
   ];
@@ -894,7 +895,7 @@ async function runLearning(historyId) {
     const { rows } = await pool.query('SELECT * FROM history WHERE id=$1', [historyId]);
     if (!rows.length) {
       console.log(`[learning] ABORT — no history row found for id=${historyId}`);
-      return;
+      return { updated: 0, skipped: 0, unchanged: 0, aborted: true };
     }
     const entry = rows[0];
     const { status, type, match_name, match_date, verdict, matched_signals } = entry;
@@ -903,7 +904,7 @@ async function runLearning(historyId) {
     // ── 2. Guard: must be win or lose ───────────────────────────────────────
     if (status !== 'win' && status !== 'lose') {
       console.log(`[learning] ABORT — status="${status}" is not win/lose`);
-      return;
+      return { updated: 0, skipped: 0, unchanged: 0, aborted: true };
     }
 
     // ── 3. Extract matched_signals ──────────────────────────────────────────
@@ -914,7 +915,8 @@ async function runLearning(historyId) {
 
     if (!signals.length) {
       console.log(`[learning] SKIP "${match_name}" — matched_signals is empty (prediction may have been saved without signal data)`);
-      return;
+      await pool.query('UPDATE history SET learning_processed=true WHERE id=$1', [historyId]);
+      return { updated: 0, skipped: 0, unchanged: 0, noSignals: true };
     }
 
     const isWin = status === 'win';
@@ -930,7 +932,6 @@ async function runLearning(historyId) {
         continue;
       }
 
-      // Lookup in signals table
       const { rows: sigRows } = await pool.query(
         'SELECT id, level FROM signals WHERE type=$1 AND name=$2 LIMIT 1',
         [type, sig.name]
@@ -970,12 +971,49 @@ async function runLearning(historyId) {
       updated++;
     }
 
-    console.log(`[learning] ✅ DONE — ${updated} updated, ${unchanged} at floor/ceiling, ${skipped} not found in DB`);
+    // ── 7. Mark entry as processed ────────────────────────────────────────
+    await pool.query('UPDATE history SET learning_processed=true WHERE id=$1', [historyId]);
+    console.log(`[learning] ✅ DONE — ${updated} updated, ${unchanged} at floor/ceiling, ${skipped} not found in DB — marked learning_processed=true`);
+    return { updated, skipped, unchanged };
   } catch (err) {
     console.error(`[learning] ❌ ERROR in runLearning(historyId=${historyId}):`, err.message);
     console.error(err.stack);
+    return { updated: 0, skipped: 0, unchanged: 0, error: err.message };
   }
 }
+
+// ─── Learning rerun ───────────────────────────────────────────────────────
+// GET /api/learning/rerun  — process all win/lose history entries not yet learned from
+app.get('/api/learning/rerun', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, match_name FROM history
+       WHERE (status = 'win' OR status = 'lose')
+         AND (learning_processed IS NULL OR learning_processed = false)
+       ORDER BY created_at ASC`
+    );
+
+    console.log(`[learning] Rerun requested — ${rows.length} unprocessed entries`);
+
+    if (!rows.length) {
+      return res.json({ processed: 0, results: [], message: 'Nothing to process — all win/lose entries already learned from' });
+    }
+
+    const results = [];
+    for (const row of rows) {
+      console.log(`[learning] Rerun processing id=${row.id} "${row.match_name}"`);
+      const summary = await runLearning(row.id);
+      results.push({ id: row.id, match: row.match_name, ...summary });
+    }
+
+    const totalUpdated = results.reduce((s, r) => s + (r.updated || 0), 0);
+    console.log(`[learning] Rerun complete — ${rows.length} entries processed, ${totalUpdated} signal levels changed`);
+    res.json({ processed: rows.length, totalSignalsUpdated: totalUpdated, results });
+  } catch (err) {
+    console.error('[learning] Rerun error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── Helper: cache one league's search results ────────────────────────────
 async function cacheSearchResult(date, leagueKey, matches, foundVia) {

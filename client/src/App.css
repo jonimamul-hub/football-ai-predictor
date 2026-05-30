@@ -487,6 +487,28 @@
 
 .check-all-btn:hover { background: #1a1d2a; border-color: #2a2d3a; }
 
+.rerun-learning-btn {
+  font-size: 11px;
+  padding: 4px 13px;
+  border-radius: 8px;
+  border: 1px solid #1a2a40;
+  background: transparent;
+  color: #60a5fa;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.rerun-learning-btn:hover:not(:disabled) { background: #0e1a2e; border-color: #2a4a70; }
+.rerun-learning-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.rerun-result {
+  font-size: 11px;
+  color: #4ade80;
+  white-space: nowrap;
+}
+.rerun-error { color: #f87171; }
+
 .hist-row {
   display: flex;
   align-items: center;

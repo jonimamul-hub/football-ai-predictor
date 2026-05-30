@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 
 export default function History({ type }) {
-  const [rows,       setRows]       = useState([])
-  const [filter,     setFilter]     = useState('all')
-  const [checking,   setChecking]   = useState(new Set())
-  const [loading,    setLoading]    = useState(true)
-  const [expandedId, setExpandedId] = useState(null)
-  const [editingId,  setEditingId]  = useState(null)
-  const [editScore,  setEditScore]  = useState('')
+  const [rows,         setRows]         = useState([])
+  const [filter,       setFilter]       = useState('all')
+  const [checking,     setChecking]     = useState(new Set())
+  const [loading,      setLoading]      = useState(true)
+  const [expandedId,   setExpandedId]   = useState(null)
+  const [editingId,    setEditingId]    = useState(null)
+  const [editScore,    setEditScore]    = useState('')
+  const [rerunning,    setRerunning]    = useState(false)
+  const [rerunResult,  setRerunResult]  = useState(null)  // null | { processed, totalSignalsUpdated }
 
   useEffect(() => { loadHistory() }, [type])
 
@@ -51,6 +53,19 @@ export default function History({ type }) {
 
   const checkAll = () => {
     rows.filter(r => r.status === 'pending').forEach(r => checkResult(r.id))
+  }
+
+  const rerunLearning = async () => {
+    setRerunning(true)
+    setRerunResult(null)
+    try {
+      const data = await api.rerunLearning()
+      setRerunResult(data)
+    } catch (e) {
+      setRerunResult({ error: e.message })
+    } finally {
+      setRerunning(false)
+    }
   }
 
   const startEdit = (r) => {
@@ -154,6 +169,24 @@ export default function History({ type }) {
           </button>
         ))}
         <button className="check-all-btn" onClick={checkAll}>Check All</button>
+        <button
+          className="rerun-learning-btn"
+          onClick={rerunLearning}
+          disabled={rerunning}
+          title="Run learning for all win/lose entries not yet processed"
+        >
+          {rerunning ? '⟳ Running…' : '🔄 Rerun Learning'}
+        </button>
+        {rerunResult && !rerunResult.error && (
+          <span className="rerun-result">
+            {rerunResult.processed === 0
+              ? '✓ Nothing new to process'
+              : `✓ ${rerunResult.processed} entr${rerunResult.processed === 1 ? 'y' : 'ies'} · ${rerunResult.totalSignalsUpdated} signal${rerunResult.totalSignalsUpdated === 1 ? '' : 's'} updated`}
+          </span>
+        )}
+        {rerunResult?.error && (
+          <span className="rerun-result rerun-error">⚠ {rerunResult.error}</span>
+        )}
       </div>
 
       {/* ── Empty state ──────────────────────────────────────────────────── */}
